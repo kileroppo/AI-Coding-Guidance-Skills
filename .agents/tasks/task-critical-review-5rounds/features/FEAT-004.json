@@ -2,7 +2,7 @@
   "id": "FEAT-004",
   "type": "feat",
   "description": "ROUND 4: Add EvolutionMetrics, confidence scoring, failure categorization, and revert_if_worse logic to the evolution engine and reflector. Currently the reflector just counts failures without understanding WHY, and there is no A/B performance comparison.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create kernel/evolution/metrics.py with EvolutionMetrics class that: tracks success_rate, avg_retries, avg_duration per node over a sliding window (configurable, default 10 iterations). Methods: record_iteration(node_id, success, retries, duration), get_node_metrics(node_id) -> dict with success_rate/avg_retries/avg_duration, get_overall_health() -> float (0.0-1.0 composite score).",
     "In kernel/reflector.py, add failure categorization: add categorize_failure(errors, result) method that returns one of: 'timeout', 'test_failure', 'code_error', 'dependency_issue', 'unknown'. Heuristic: if 'timeout' in any error -> timeout, if 'test' in any error -> test_failure, if 'import' or 'dependency' in any error -> dependency_issue, if 'syntax' or 'error' in any error -> code_error, else unknown.",
@@ -23,5 +23,5 @@
     "eval \"$(pyenv init -)\" && pyenv shell 3.12.13 && python -m pytest tests/ --cov=. --cov-report=term-missing --tb=short -q"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 261 tests pass (up from 244 baseline). Coverage at 99%. Added 17 new tests across TestEvolutionMetrics, TestRevertIfWorse, and TestFailureCategorization classes. No existing tests broken."
 }
