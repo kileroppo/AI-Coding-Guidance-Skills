@@ -2,7 +2,7 @@
   "id": "FEAT-004",
   "type": "feat",
   "description": "Write comprehensive tests achieving 90%+ coverage for all kernel modules: runner, graph_executor, state_manager, knowledge store, skill_composer, evolution engine, and reflector. Tests should exercise real logic paths, edge cases, error handling, and the self-evolution constraints.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create tests/conftest.py with shared fixtures: tmp_dir for isolated test state, sample graph.yaml fixture, sample state.yaml fixture, sample skills directory with mock SKILL.md files, sample knowledge directory structure.",
     "Create tests/test_runner.py: Test runner.py main() with --dry-run mode, test --goal flag sets current_goal.md, test --max-iterations is respected, test runner exits when max iterations reached, test runner handles missing state.yaml gracefully (creates default), test runner handles invalid graph.yaml with clear error.",
@@ -29,5 +29,5 @@
     "cd /projects/sandbox/AI-Coding-Guidance-Skills && python3.12 -m pytest tests/ --cov=kernel --cov=knowledge --cov=memory --cov=runner --cov-report=term-missing --cov-fail-under=90"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Coverage improved from 93% to 99.50%. All 171 tests pass in ~1 second. Only 3 lines remain uncovered: graph_executor.py:171-172 (defensive except KeyError that is unreachable since node_ids is built from the same list get_node searches) and runner.py:153 (if __name__ == '__main__' guard). The --cov-fail-under=90 threshold passes comfortably."
 }
