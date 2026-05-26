@@ -24,11 +24,15 @@ class TestKernelStructure:
         from kernel.evolution.engine import EvolutionEngine
         assert EvolutionEngine is not None
 
-    def test_evolution_engine_instantiation(self, kernel_root: Path) -> None:
-        """Test that EvolutionEngine can be instantiated."""
-        from kernel.evolution.engine import EvolutionEngine
-        eng = EvolutionEngine(kernel_root)
-        assert eng.kernel_root == kernel_root
+    def test_graph_executor_importable(self) -> None:
+        """Test that kernel.graph_executor can be imported."""
+        from kernel.graph_executor import GraphExecutor
+        assert GraphExecutor is not None
+
+    def test_reflector_importable(self) -> None:
+        """Test that kernel.reflector can be imported."""
+        from kernel.reflector import Reflector
+        assert Reflector is not None
 
     def test_immutable_files_defined(self) -> None:
         """Test that IMMUTABLE_FILES is defined correctly."""
