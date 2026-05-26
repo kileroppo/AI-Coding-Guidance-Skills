@@ -4,7 +4,7 @@ This is the main entry point for the kernel. It orchestrates the execution loop
 by reading state, determining the current node, loading the appropriate prompt,
 and advancing through the workflow graph.
 
-Two execution modes exist:
+Three execution modes exist:
 
 Mode 1 (runner.py): Dry-run/scaffolding mode that traverses the graph mechanically.
     The runner does not call an LLM. It always takes the first available transition
@@ -16,13 +16,21 @@ Mode 1 (runner.py): Dry-run/scaffolding mode that traverses the graph mechanical
 Mode 2 (AI reads BOOT.md directly): An AI agent reads kernel/BOOT.md as its
     system prompt and evaluates transition conditions itself. In this mode the
     runner is not involved and the AI manages state.yaml directly.
+
+Mode 3 (Real AI execution via subprocess): The runner assembles context from
+    kernel components and pipes it to an AI CLI tool via subprocess. The AI
+    output is parsed for transition decisions.
+
+    Usage: python3.12 runner.py --goal "Build a REST API" --ai-command "claude --print"
 """
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
+from kernel.context_assembler import ContextAssembler
 from kernel.graph_executor import GraphExecutor
 from knowledge.store import KnowledgeStore
 from memory.state_manager import StateManager
@@ -61,7 +69,45 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Print what would be done without modifying state",
     )
+    parser.add_argument(
+        "--ai-command",
+        type=str,
+        default=None,
+        help="AI CLI command for Mode 3 execution (e.g., 'claude --print')",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Timeout per iteration in seconds for Mode 3 (default: 300)",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Continue from saved state instead of starting fresh",
+    )
+    parser.add_argument(
+        "--generate-prompt",
+        action="store_true",
+        help="Output assembled prompt to stdout and exit",
+    )
     return parser.parse_args(argv)
+
+
+def _parse_transition(output: str) -> str | None:
+    """Parse AI output for a TRANSITION line.
+
+    Args:
+        output: The AI subprocess stdout.
+
+    Returns:
+        The transition condition string, or None if not found.
+    """
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("TRANSITION:"):
+            return stripped[len("TRANSITION:"):].strip()
+    return None
 
 
 def main(argv: list[str] | None = None) -> dict[str, Any]:
@@ -85,7 +131,10 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     knowledge = KnowledgeStore(knowledge_dir)
 
     if args.goal:
-        if args.dry_run:
+        if args.resume and state_mgr.state.get("goal"):
+            # When resuming, do not overwrite existing goal
+            pass
+        elif args.dry_run:
             state_mgr.state["goal"] = args.goal
         else:
             state_mgr.set_goal(args.goal)
@@ -93,11 +142,31 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     state_mgr.state["max_iterations"] = args.max_iterations
     state_mgr.state["status"] = "running"
 
+    # Handle --generate-prompt: assemble and print context, then exit
+    if args.generate_prompt:
+        assembler = ContextAssembler(KERNEL_ROOT)
+        state = state_mgr.get_state()
+        try:
+            node = graph.get_current_node(state)
+        except KeyError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            state_mgr.state["status"] = "error"
+            return state_mgr.get_state()
+        prompt = assembler.assemble(state, node, graph, knowledge)
+        print(prompt)
+        return state_mgr.get_state()
+
+    # Determine execution mode
+    mode3 = args.ai_command is not None and not args.dry_run
+
     if args.dry_run:
         print(f"[DRY RUN] Goal: {args.goal}")
         print(f"[DRY RUN] Max iterations: {args.max_iterations}")
         print(f"[DRY RUN] Starting node: {state_mgr.state.get('current_node', 'init')}")
         print()
+
+    if mode3:
+        assembler = ContextAssembler(KERNEL_ROOT)
 
     for i in range(args.max_iterations):
         state = state_mgr.get_state()
@@ -130,24 +199,77 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
 
         state_mgr.increment_iteration()
 
-        # SCAFFOLDING: In this mode (Mode 1), the runner always picks the first
-        # available transition without evaluating conditions. This is intentional:
-        # the runner does not call an LLM and cannot evaluate conditions like
-        # "tests_pass" or "plan_ready". For actual condition evaluation, an AI
-        # agent should read BOOT.md directly (Mode 2) and decide transitions itself.
-        transitions = graph.get_available_transitions(node["id"])
-        if transitions:
-            next_node_id = transitions[0]["to"]
-            state_mgr.set_current_node(next_node_id)
-            if args.dry_run:
-                print(f"  Next node: {next_node_id}")
-                print()
+        if mode3:
+            # Mode 3: Real AI execution via subprocess
+            context_prompt = assembler.assemble(state, node, graph, knowledge)
+            try:
+                result = subprocess.run(
+                    args.ai_command.split(),
+                    input=context_prompt,
+                    capture_output=True,
+                    text=True,
+                    timeout=args.timeout,
+                )
+                ai_output = result.stdout
+                transition_condition = _parse_transition(ai_output)
+            except subprocess.TimeoutExpired:
+                state_mgr.state.setdefault("errors", []).append(
+                    f"Timeout after {args.timeout}s on node {node['id']}"
+                )
+                # Stay on same node - do not advance
+                continue
+            except FileNotFoundError:
+                print(
+                    f"Error: AI command not found: '{args.ai_command.split()[0]}'. "
+                    f"Please verify the command is installed and in your PATH.",
+                    file=sys.stderr,
+                )
+                state_mgr.state["status"] = "error"
+                state_mgr.state.setdefault("errors", []).append(
+                    f"Command not found: {args.ai_command.split()[0]}"
+                )
+                break
+
+            # Determine next node
+            transitions = graph.get_available_transitions(node["id"])
+            if transitions:
+                if transition_condition:
+                    # Try to match the AI-provided condition
+                    matched = False
+                    for t in transitions:
+                        if t.get("condition") == transition_condition:
+                            next_node_id = t["to"]
+                            matched = True
+                            break
+                    if not matched:
+                        # Fallback to first transition
+                        next_node_id = transitions[0]["to"]
+                else:
+                    # No TRANSITION line - fallback to first transition
+                    next_node_id = transitions[0]["to"]
+                state_mgr.set_current_node(next_node_id)
+            else:
+                state_mgr.state["status"] = "complete"
+                break
         else:
-            state_mgr.state["status"] = "complete"
-            if args.dry_run:
-                print(f"  Next node: END")
-                print()
-            break
+            # SCAFFOLDING: In this mode (Mode 1), the runner always picks the first
+            # available transition without evaluating conditions. This is intentional:
+            # the runner does not call an LLM and cannot evaluate conditions like
+            # "tests_pass" or "plan_ready". For actual condition evaluation, an AI
+            # agent should read BOOT.md directly (Mode 2) and decide transitions itself.
+            transitions = graph.get_available_transitions(node["id"])
+            if transitions:
+                next_node_id = transitions[0]["to"]
+                state_mgr.set_current_node(next_node_id)
+                if args.dry_run:
+                    print(f"  Next node: {next_node_id}")
+                    print()
+            else:
+                state_mgr.state["status"] = "complete"
+                if args.dry_run:
+                    print(f"  Next node: END")
+                    print()
+                break
 
     # Mark as complete if we finished the loop
     if state_mgr.state.get("status") == "running":
