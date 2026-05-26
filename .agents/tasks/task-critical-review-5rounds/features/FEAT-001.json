@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "ROUND 1: Add Mode 3 (real AI execution) to runner.py. Currently the runner only does dry-run traversal. Add a real execution mode that accepts --ai-command, assembles context, invokes AI via subprocess, and handles timeouts and resume.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "In runner.py, add new CLI arguments: --ai-command (string, optional AI CLI command like 'claude --print'), --timeout (int, default 300 seconds per iteration), --resume (flag to continue from saved state instead of starting fresh)",
     "Add a Mode 3 execution path in main(): when --ai-command is provided and --dry-run is NOT set, use the real AI execution mode. When neither --ai-command nor --dry-run is provided, fall back to dry-run with a warning message.",
@@ -25,5 +25,5 @@
     "eval \"$(pyenv init -)\" && pyenv shell 3.12.13 && python -m pytest tests/ --cov=. --cov-report=term-missing --tb=short -q"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 220 tests pass (37 new tests added). Coverage 99%. Mode 3 uses subprocess.run with text=True, capture_output=True, and timeout. ContextAssembler is in kernel/context_assembler.py. The fallback when neither --ai-command nor --dry-run preserves original Mode 1 scaffolding behavior (saves state)."
 }
