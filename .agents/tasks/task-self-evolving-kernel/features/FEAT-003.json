@@ -2,7 +2,7 @@
   "id": "FEAT-003",
   "type": "feat",
   "description": "Copy and integrate external skills (Ralph and UI/UX) into the knowledge/skills/ directory, and register all existing skills. Ralph gets copied from /projects/sandbox/ralph-source/skills/. UI/UX skills get copied from /projects/sandbox/ui-ux-source/.claude/skills/ with symlinks resolved (actual files from /projects/sandbox/ui-ux-source/src/ui-ux-pro-max/ copied instead of symlinks). All existing repo skills get registered in knowledge/skills/_index.yaml.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Create knowledge/skills/ralph/ directory and copy: /projects/sandbox/ralph-source/skills/ralph/SKILL.md to knowledge/skills/ralph/SKILL.md.",
     "Create knowledge/skills/prd/ directory and copy: /projects/sandbox/ralph-source/skills/prd/SKILL.md to knowledge/skills/prd/SKILL.md.",
