@@ -275,6 +275,246 @@ class TestSkillComposer:
             sc.get_skill_content("missing_skill")
 
 
+class TestSkillComposerAdvanced:
+    """Tests for advanced SkillComposer features: ordering, conflicts, phases, token budget."""
+
+    def test_resolve_order_foundational_first(self, tmp_knowledge: Path) -> None:
+        """Skills that are composable_with by many others come first."""
+        ks = KnowledgeStore(str(tmp_knowledge))
+        # Create skills: C composable_with [A, B], B composable_with [A]
+        # A is most foundational (referenced by both B and C)
+        # B is next (referenced by C)
+        # C is least foundational
+        ks.add_skill("skillA", "Foundational skill")
+        ks.add_skill("skillB", "Middle skill")
+        ks.add_skill("skillC", "Leaf skill")
+
+        # Update index to add composable_with
+        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        data = yaml.safe_load(index_path.read_text())
+        for item in data["items"]:
+            if item["name"] == "skillA":
+                item["composable_with"] = []
+            elif item["name"] == "skillB":
+                item["composable_with"] = ["skillA"]
+            elif item["name"] == "skillC":
+                item["composable_with"] = ["skillA", "skillB"]
+        with open(index_path, "w") as f:
+            yaml.safe_dump(data, f)
+
+        sc = SkillComposer(ks)
+        result = sc.resolve_order(["skillC", "skillB", "skillA"])
+        assert result == ["skillA", "skillB", "skillC"]
+
+    def test_resolve_order_no_composable_data(self, tmp_knowledge: Path) -> None:
+        """Skills without composable_with info maintain original order."""
+        ks = KnowledgeStore(str(tmp_knowledge))
+        ks.add_skill("x", "Skill X")
+        ks.add_skill("y", "Skill Y")
+        ks.add_skill("z", "Skill Z")
+
+        sc = SkillComposer(ks)
+        result = sc.resolve_order(["x", "y", "z"])
+        assert result == ["x", "y", "z"]
+
+    def test_resolve_order_cycle_graceful(self, tmp_knowledge: Path) -> None:
+        """If A composable_with [B] and B composable_with [A], should not crash."""
+        ks = KnowledgeStore(str(tmp_knowledge))
+        ks.add_skill("cycleA", "Cycle A")
+        ks.add_skill("cycleB", "Cycle B")
+
+        # Create a cycle: A -> B and B -> A
+        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        data = yaml.safe_load(index_path.read_text())
+        for item in data["items"]:
+            if item["name"] == "cycleA":
+                item["composable_with"] = ["cycleB"]
+            elif item["name"] == "cycleB":
+                item["composable_with"] = ["cycleA"]
+        with open(index_path, "w") as f:
+            yaml.safe_dump(data, f)
+
+        sc = SkillComposer(ks)
+        # Should not crash - returns original order on cycle
+        result = sc.resolve_order(["cycleA", "cycleB"])
+        assert isinstance(result, list)
+        assert set(result) == {"cycleA", "cycleB"}
+
+    def test_detect_conflicts_compatible(self, tmp_knowledge: Path) -> None:
+        """Two skills in each other's composable_with produce no warnings."""
+        ks = KnowledgeStore(str(tmp_knowledge))
+        ks.add_skill("comp1", "Compatible 1")
+        ks.add_skill("comp2", "Compatible 2")
+
+        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        data = yaml.safe_load(index_path.read_text())
+        for item in data["items"]:
+            if item["name"] == "comp1":
+                item["composable_with"] = ["comp2"]
+            elif item["name"] == "comp2":
+                item["composable_with"] = ["comp1"]
+        with open(index_path, "w") as f:
+            yaml.safe_dump(data, f)
+
+        sc = SkillComposer(ks)
+        warnings = sc.detect_conflicts(["comp1", "comp2"])
+        assert warnings == []
+
+    def test_detect_conflicts_incompatible(self, tmp_knowledge: Path) -> None:
+        """Two skills NOT in each other's composable_with produce a warning."""
+        ks = KnowledgeStore(str(tmp_knowledge))
+        ks.add_skill("incompat1", "Incompatible 1")
+        ks.add_skill("incompat2", "Incompatible 2")
+
+        # Default composable_with is [] so they are incompatible
+        sc = SkillComposer(ks)
+        warnings = sc.detect_conflicts(["incompat1", "incompat2"])
+        assert len(warnings) == 1
+        assert "incompat1" in warnings[0]
+        assert "incompat2" in warnings[0]
+        assert warnings[0].startswith("Warning:")
+
+    def test_detect_conflicts_mixed(self, tmp_knowledge: Path) -> None:
+        """Some compatible pairs, some not."""
+        ks = KnowledgeStore(str(tmp_knowledge))
+        ks.add_skill("mix1", "Mix 1")
+        ks.add_skill("mix2", "Mix 2")
+        ks.add_skill("mix3", "Mix 3")
+
+        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        data = yaml.safe_load(index_path.read_text())
+        for item in data["items"]:
+            if item["name"] == "mix1":
+                item["composable_with"] = ["mix2"]  # mix1 compatible with mix2
+            elif item["name"] == "mix2":
+                item["composable_with"] = []
+            elif item["name"] == "mix3":
+                item["composable_with"] = []
+        with open(index_path, "w") as f:
+            yaml.safe_dump(data, f)
+
+        sc = SkillComposer(ks)
+        warnings = sc.detect_conflicts(["mix1", "mix2", "mix3"])
+        # mix1-mix2: mix1 has mix2 in composable_with -> compatible (one direction is enough)
+        # mix1-mix3: neither has the other -> incompatible
+        # mix2-mix3: neither has the other -> incompatible
+        assert len(warnings) == 2
+
+    def test_compose_for_phase_valid(self, tmp_knowledge: Path) -> None:
+        """compose_for_phase with a valid phase returns composed content."""
+        ks = KnowledgeStore(str(tmp_knowledge))
+
+        # Create skills with SKILL.md
+        skill1_dir = tmp_knowledge / "skills" / "phase_skill1"
+        skill1_dir.mkdir(parents=True)
+        (skill1_dir / "SKILL.md").write_text("Phase skill 1 content")
+
+        skill2_dir = tmp_knowledge / "skills" / "phase_skill2"
+        skill2_dir.mkdir(parents=True)
+        (skill2_dir / "SKILL.md").write_text("Phase skill 2 content")
+
+        ks.add_skill("phase_skill1", "Phase skill 1", path="phase_skill1")
+        ks.add_skill("phase_skill2", "Phase skill 2", path="phase_skill2")
+
+        # Write an _index.yaml with workflow section
+        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        data = yaml.safe_load(index_path.read_text())
+        data["workflow"] = {
+            "test_phase": ["phase_skill1", "phase_skill2"],
+        }
+        with open(index_path, "w") as f:
+            yaml.safe_dump(data, f)
+
+        sc = SkillComposer(ks)
+        result = sc.compose_for_phase("test_phase")
+        assert "Phase skill 1 content" in result
+        assert "Phase skill 2 content" in result
+
+    def test_compose_for_phase_invalid(self, tmp_knowledge: Path) -> None:
+        """Unknown phase raises ValueError."""
+        ks = KnowledgeStore(str(tmp_knowledge))
+
+        # Write an _index.yaml with workflow section
+        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        data = yaml.safe_load(index_path.read_text())
+        data["workflow"] = {"existing_phase": ["some_skill"]}
+        with open(index_path, "w") as f:
+            yaml.safe_dump(data, f)
+
+        sc = SkillComposer(ks)
+        with pytest.raises(ValueError, match="Phase 'nonexistent_phase' not found"):
+            sc.compose_for_phase("nonexistent_phase")
+
+    def test_token_budget_no_limit(self, tmp_knowledge: Path) -> None:
+        """compose with max_tokens=None includes all skills."""
+        ks = KnowledgeStore(str(tmp_knowledge))
+
+        skill1_dir = tmp_knowledge / "skills" / "budget1"
+        skill1_dir.mkdir(parents=True)
+        (skill1_dir / "SKILL.md").write_text("Content for budget skill 1")
+
+        skill2_dir = tmp_knowledge / "skills" / "budget2"
+        skill2_dir.mkdir(parents=True)
+        (skill2_dir / "SKILL.md").write_text("Content for budget skill 2")
+
+        ks.add_skill("budget1", "Budget 1", path="budget1")
+        ks.add_skill("budget2", "Budget 2", path="budget2")
+
+        sc = SkillComposer(ks)
+        result = sc.compose(["budget1", "budget2"], max_tokens=None)
+        assert "budget1" in result
+        assert "budget2" in result
+        assert "[TRUNCATED]" not in result
+
+    def test_token_budget_truncates(self, tmp_knowledge: Path) -> None:
+        """compose with very small max_tokens truncates and shows warning."""
+        ks = KnowledgeStore(str(tmp_knowledge))
+
+        skill1_dir = tmp_knowledge / "skills" / "trunc1"
+        skill1_dir.mkdir(parents=True)
+        (skill1_dir / "SKILL.md").write_text("Short")
+
+        skill2_dir = tmp_knowledge / "skills" / "trunc2"
+        skill2_dir.mkdir(parents=True)
+        (skill2_dir / "SKILL.md").write_text("A" * 1000)
+
+        ks.add_skill("trunc1", "Truncate 1", path="trunc1")
+        ks.add_skill("trunc2", "Truncate 2", path="trunc2")
+
+        sc = SkillComposer(ks)
+        # Very small budget - only first skill should fit
+        result = sc.compose(["trunc1", "trunc2"], max_tokens=10)
+        assert "## Skill: trunc1" in result
+        assert "[TRUNCATED]" in result
+        assert "trunc2" in result  # mentioned in truncation notice
+
+    def test_validate_composition_with_conflicts(self, tmp_knowledge: Path) -> None:
+        """Conflict warnings are returned but compose still works."""
+        ks = KnowledgeStore(str(tmp_knowledge))
+
+        skill1_dir = tmp_knowledge / "skills" / "conflict1"
+        skill1_dir.mkdir(parents=True)
+        (skill1_dir / "SKILL.md").write_text("Conflict skill 1")
+
+        skill2_dir = tmp_knowledge / "skills" / "conflict2"
+        skill2_dir.mkdir(parents=True)
+        (skill2_dir / "SKILL.md").write_text("Conflict skill 2")
+
+        ks.add_skill("conflict1", "Conflict 1", path="conflict1")
+        ks.add_skill("conflict2", "Conflict 2", path="conflict2")
+        # Default composable_with is [], so they are "incompatible"
+
+        sc = SkillComposer(ks)
+        issues = sc.validate_composition(["conflict1", "conflict2"])
+        # Should have a warning
+        assert any("Warning:" in i for i in issues)
+
+        # compose should still work (warnings don't block)
+        result = sc.compose(["conflict1", "conflict2"])
+        assert "Conflict skill 1" in result
+        assert "Conflict skill 2" in result
+
+
 class TestKnowledgeFiles:
     """Tests for knowledge directory files."""
 
