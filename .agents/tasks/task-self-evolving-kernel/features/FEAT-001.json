@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "chore",
   "description": "Set up Python project structure, install dependencies, and create all kernel framework files (BOOT.md, constitution.md, graph.yaml, state.yaml, philosophy docs, prompt templates, and the runner.py entry point). This establishes the entire skeleton that other features build upon.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create pyproject.toml or setup.cfg at /projects/sandbox/AI-Coding-Guidance-Skills/ with dependencies: pyyaml, pytest, pytest-cov. Set python_requires>=3.9.",
     "Install dependencies: python3.12 -m pip install pyyaml pytest pytest-cov",
@@ -39,5 +39,5 @@
     "python3.12 -c 'import yaml; data = yaml.safe_load(open(\"kernel/state.yaml\")); assert \"current_node\" in data; print(\"state.yaml valid\")'"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 80 tests pass with 94% coverage. Dependencies installed via pip (pyyaml 6.0.3, pytest 9.0.3, pytest-cov 7.1.0). Python 3.12.13 available. Added .gitignore for __pycache__ and .coverage. runner.py uses KERNEL_ROOT = Path(__file__).parent for path resolution."
 }
