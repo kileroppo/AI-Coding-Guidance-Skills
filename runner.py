@@ -4,8 +4,18 @@ This is the main entry point for the kernel. It orchestrates the execution loop
 by reading state, determining the current node, loading the appropriate prompt,
 and advancing through the workflow graph.
 
-Usage:
-    python3.12 runner.py --goal "Build a REST API" --max-iterations 30 --dry-run
+Two execution modes exist:
+
+Mode 1 (runner.py): Dry-run/scaffolding mode that traverses the graph mechanically.
+    The runner does not call an LLM. It always takes the first available transition
+    from each node to advance state. This is useful for verifying graph structure
+    and prompt loading without requiring AI integration.
+
+    Usage: python3.12 runner.py --goal "Build a REST API" --max-iterations 30 --dry-run
+
+Mode 2 (AI reads BOOT.md directly): An AI agent reads kernel/BOOT.md as its
+    system prompt and evaluates transition conditions itself. In this mode the
+    runner is not involved and the AI manages state.yaml directly.
 """
 
 import argparse
@@ -120,7 +130,11 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
 
         state_mgr.increment_iteration()
 
-        # Determine next node (use first transition's 'to' as default in dry-run)
+        # SCAFFOLDING: In this mode (Mode 1), the runner always picks the first
+        # available transition without evaluating conditions. This is intentional:
+        # the runner does not call an LLM and cannot evaluate conditions like
+        # "tests_pass" or "plan_ready". For actual condition evaluation, an AI
+        # agent should read BOOT.md directly (Mode 2) and decide transitions itself.
         transitions = graph.get_available_transitions(node["id"])
         if transitions:
             next_node_id = transitions[0]["to"]

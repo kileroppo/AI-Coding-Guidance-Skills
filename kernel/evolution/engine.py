@@ -6,6 +6,7 @@ constraints defined in the constitution.
 """
 
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,8 +15,11 @@ from typing import Any
 import yaml
 
 
-# Files that are immutable and cannot be modified by the evolution engine
-IMMUTABLE_FILES = frozenset({"kernel/BOOT.md", "kernel/constitution.md", "runner.py"})
+# Files that are immutable and cannot be modified by the evolution engine.
+# Stored in normalized form for reliable comparison.
+IMMUTABLE_FILES = frozenset(
+    os.path.normpath(p) for p in ("kernel/BOOT.md", "kernel/constitution.md", "runner.py")
+)
 
 # Valid change types
 VALID_CHANGE_TYPES = frozenset({
@@ -66,7 +70,8 @@ class EvolutionEngine:
         """Validate against constitution.
 
         MUST REJECT changes that touch protected paths. Also rejects
-        invalid change types.
+        invalid change types. All paths are normalized before comparison
+        to prevent bypass via variants like ./kernel/BOOT.md or kernel//BOOT.md.
 
         Args:
             change: The change proposal dict.
@@ -81,16 +86,29 @@ class EvolutionEngine:
         if change_type not in VALID_CHANGE_TYPES:
             return (False, f"Invalid change type: {change_type}")
 
-        # Check if change targets protected files
-        target_file = details.get("target_file", "")
-        if target_file in IMMUTABLE_FILES:
-            return (False, f"Cannot modify protected file: {target_file}")
-
-        # Check for protected paths in various detail fields
-        for field in ["path", "file", "prompt_file"]:
+        # Check if change targets protected files (with path normalization)
+        for field in ["target_file", "path", "file", "prompt_file"]:
             path_value = details.get(field, "")
-            if path_value in IMMUTABLE_FILES:
+            if not path_value:
+                continue
+            normalized = os.path.normpath(path_value)
+            if normalized in IMMUTABLE_FILES:
                 return (False, f"Cannot modify protected file: {path_value}")
+
+        # For modify_prompt, check for path traversal escaping kernel/prompts/
+        if change_type == "modify_prompt":
+            prompt_file = details.get("prompt_file", "")
+            if prompt_file:
+                # Resolve against kernel_dir to detect traversal
+                resolved = (self.kernel_dir / prompt_file).resolve()
+                kernel_resolved = self.kernel_dir.resolve()
+                if not str(resolved).startswith(str(kernel_resolved) + os.sep) and resolved != kernel_resolved:
+                    return (False, f"Path traversal detected in prompt_file: {prompt_file}")
+                # Also check if the resolved path matches any immutable file's absolute path
+                for immutable in IMMUTABLE_FILES:
+                    immutable_resolved = (self.kernel_dir.parent / immutable).resolve()
+                    if resolved == immutable_resolved:
+                        return (False, f"Cannot modify protected file: {prompt_file}")
 
         # Type-specific validation
         if change_type == "remove_node":
@@ -132,6 +150,8 @@ class EvolutionEngine:
 
             elif change_type == "remove_node":
                 node_id = details.get("node_id", "")
+                # Save node definition before removal for rollback support
+                change["details"]["node_backup"] = self.graph_executor.get_node(node_id)
                 self.graph_executor.remove_node(node_id)
                 self.graph_executor.save_graph()
 
@@ -139,6 +159,9 @@ class EvolutionEngine:
                 prompt_file = details.get("prompt_file", "")
                 new_content = details.get("content", "")
                 prompt_path = self.kernel_dir / prompt_file
+                # Save original content before modification for rollback support
+                if prompt_path.exists():
+                    change["details"]["original_content"] = prompt_path.read_text(encoding="utf-8")
                 prompt_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(prompt_path, "w", encoding="utf-8") as f:
                     f.write(new_content)

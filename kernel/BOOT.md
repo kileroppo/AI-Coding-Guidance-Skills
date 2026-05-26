@@ -40,11 +40,17 @@ Perform the task described in your role prompt. Use the context from memory/
 
 ### Step 7: Update and Advance
 After completing your task:
-1. Update `kernel/state.yaml` with results
-2. Update `memory/progress.yaml` with progress
-3. Record any decisions in `memory/decisions.jsonl`
-4. Determine the next node based on transition conditions in graph.yaml
-5. Advance `current_node` to the next node
+1. Update `memory/progress.yaml` with progress
+2. Record any decisions in `memory/decisions.jsonl`
+3. Determine the next node based on transition conditions in graph.yaml
+
+**State ownership depends on your execution mode:**
+- If running under `runner.py` (Mode 1): The runner manages `kernel/state.yaml`.
+  Do NOT write to state.yaml yourself. The runner will advance `current_node`
+  and save state automatically after each iteration.
+- If running standalone (Mode 2 - AI reads BOOT.md directly without runner.py):
+  You are responsible for updating `kernel/state.yaml` with results and advancing
+  `current_node` to the next node based on transition conditions.
 
 ## CRITICAL CONSTRAINTS
 
