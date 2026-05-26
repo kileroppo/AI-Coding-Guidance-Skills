@@ -1,0 +1,11 @@
+current_node: init
+iteration_count: 0
+max_iterations: 30
+goal: ""
+status: idle
+last_updated: ""
+errors: []
+context:
+  skills_loaded: []
+  current_task: ""
+  phase: "startup"
