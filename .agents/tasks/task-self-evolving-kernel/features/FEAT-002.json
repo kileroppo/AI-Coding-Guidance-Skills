@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Implement the core kernel engine modules: graph executor (reads graph.yaml and executes workflow nodes), state manager (reads/writes state.yaml and memory files), knowledge store (CRUD for rules/skills/patterns with indexing), evolution engine (self-modification of graph.yaml and prompts), skill composer (combines multiple skills), and the reflector logic. These are the Python modules that make the kernel functional.",
-  "status": "pending",
+  "status": "completed",
   "steps": [
     "Implement kernel/graph_executor.py: A class GraphExecutor that (1) loads graph.yaml, (2) resolves the current node from state, (3) returns the node's prompt file path and metadata, (4) determines next node based on conditions/transitions, (5) supports adding/removing/reordering nodes (for evolution). Methods: load_graph(), get_current_node(), get_prompt_for_node(node_id), advance(result), get_available_transitions(), validate_graph(). The graph.yaml format: {nodes: [{id, prompt_file, transitions: [{to, condition}], max_retries}]}.",
     "Implement memory/state_manager.py: A class StateManager that (1) loads/saves state.yaml, (2) tracks iteration count, (3) manages current_goal.md, plan.md, progress.yaml, (4) appends to decisions.jsonl and reflections.jsonl, (5) provides state snapshots. Methods: load_state(), save_state(), get_state(), set_current_node(node_id), increment_iteration(), record_decision(decision_dict), record_reflection(reflection_dict), update_progress(tasks_total, tasks_done), is_complete(), reset().",
@@ -30,5 +30,5 @@
     "python3.12 -c 'from knowledge.store import KnowledgeStore; k = KnowledgeStore(\"knowledge/\"); print(k.list_skills())'"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 152 tests pass with 93.2% coverage (exceeding the 90% threshold). All verification commands pass: runner.py dry-run works, all modules importable, GraphExecutor reads graph.yaml, StateManager manages state, KnowledgeStore lists skills. The test_placeholders.py file was removed since placeholder methods no longer exist. The SkillComposer constructor now takes a KnowledgeStore instance instead of a skills_dir path. The EvolutionEngine constructor takes (kernel_dir, graph_executor) instead of just kernel_root. StateManager takes (state_path, memory_dir) strings instead of a single kernel_root Path."
 }
