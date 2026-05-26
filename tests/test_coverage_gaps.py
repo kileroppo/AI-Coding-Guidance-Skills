@@ -152,7 +152,9 @@ class TestGraphExecutorValidationGaps:
         valid, issues = ge.validate_graph()
         # Graph is valid - all nodes reachable, all transitions valid
         assert valid is True
-        assert issues == []
+        # May have a loop warning but no hard errors
+        hard_errors = [i for i in issues if not i.startswith("Warning:")]
+        assert hard_errors == []
 
 
 # ============================================================

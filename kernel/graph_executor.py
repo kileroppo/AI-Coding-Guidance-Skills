@@ -131,6 +131,8 @@ class GraphExecutor:
 
         Validates that all transitions point to existing nodes and that
         there are no orphan nodes (unreachable from default_start).
+        Also detects deterministic loops in Mode 1 path (following first
+        transitions only) and reports them as warnings.
 
         Returns:
             Tuple of (is_valid, list_of_issues).
@@ -175,7 +177,58 @@ class GraphExecutor:
         for orphan in orphans:
             issues.append(f"Node '{orphan}' is unreachable from '{default_start}'")
 
-        return (len(issues) == 0, issues)
+        # Detect deterministic loops (Mode 1 path following first transitions)
+        loop_warning = self._detect_first_transition_loop(default_start, node_ids)
+        if loop_warning:
+            issues.append(loop_warning)
+
+        # Loop warnings do not make the graph invalid
+        hard_errors = [
+            i for i in issues
+            if not i.startswith("Warning:")
+        ]
+        return (len(hard_errors) == 0, issues)
+
+    def _detect_first_transition_loop(self, start: str, node_ids: set) -> str | None:
+        """Detect if following only first transitions creates a cycle.
+
+        This is the exact path Mode 1 takes. If a cycle is found, returns
+        a warning string. Otherwise returns None.
+
+        Args:
+            start: The starting node ID.
+            node_ids: Set of all valid node IDs.
+
+        Returns:
+            Warning string if loop detected, None otherwise.
+        """
+        visited = []
+        visited_set = set()
+        current = start
+
+        while current and current in node_ids and current not in visited_set:
+            visited.append(current)
+            visited_set.add(current)
+            try:
+                node = self.get_node(current)
+            except KeyError:
+                break
+            transitions = node.get("transitions", [])
+            if not transitions:
+                # Terminal node - no loop
+                return None
+            current = transitions[0].get("to")
+
+        if current in visited_set:
+            # Build the path showing the loop
+            loop_start_idx = visited.index(current)
+            path = visited[loop_start_idx:] + [current]
+            path_str = " -> ".join(path)
+            return (
+                f"Warning: Deterministic loop detected in Mode 1 path: "
+                f"{path_str} (following first transitions only)"
+            )
+        return None
 
     def add_node(self, node_dict: dict) -> None:
         """Add a new node to the graph.

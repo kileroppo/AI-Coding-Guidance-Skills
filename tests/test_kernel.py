@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from kernel.bootstrap import BootstrapGenerator
 from kernel.context_assembler import ContextAssembler
 from kernel.graph_executor import GraphExecutor
 from knowledge.store import KnowledgeStore
@@ -329,3 +330,145 @@ class TestContextAssembler:
         """Test that context_assembler module can be imported."""
         from kernel.context_assembler import ContextAssembler
         assert ContextAssembler is not None
+
+
+class TestBootstrapGenerator:
+    """Tests for the BootstrapGenerator class."""
+
+    @pytest.fixture
+    def bootstrap_env(self, tmp_path: Path) -> Path:
+        """Set up a minimal kernel environment for bootstrap generation."""
+        kernel_dir = tmp_path / "kernel"
+        kernel_dir.mkdir()
+        (kernel_dir / "BOOT.md").write_text("# KERNEL BOOT SEQUENCE\nBoot content here.")
+        (kernel_dir / "constitution.md").write_text("# Constitution\nImmutable safety rules.")
+        (kernel_dir / "philosophy").mkdir()
+        (kernel_dir / "philosophy" / "dao.md").write_text("# Dao\nSimplicity is the way.")
+        (kernel_dir / "philosophy" / "strategy.md").write_text("# Strategy\nAdapt and overcome.")
+        (kernel_dir / "prompts").mkdir()
+        (kernel_dir / "prompts" / "orchestrator.md").write_text("Orchestrate the workflow.")
+
+        # state.yaml
+        state_data = {
+            "current_node": "init",
+            "iteration_count": 3,
+            "max_iterations": 30,
+            "goal": "Build an API",
+            "status": "running",
+            "errors": [],
+        }
+        with open(kernel_dir / "state.yaml", "w") as f:
+            yaml.safe_dump(state_data, f)
+
+        # graph.yaml
+        graph_data = {
+            "nodes": [
+                {
+                    "id": "init",
+                    "prompt_file": "prompts/orchestrator.md",
+                    "description": "Initialize",
+                    "transitions": [{"to": "plan", "condition": "goal_loaded"}],
+                    "max_retries": 1,
+                },
+                {
+                    "id": "plan",
+                    "prompt_file": "prompts/planner.md",
+                    "description": "Plan",
+                    "transitions": [],
+                    "max_retries": 1,
+                },
+            ],
+            "default_start": "init",
+        }
+        with open(kernel_dir / "graph.yaml", "w") as f:
+            yaml.safe_dump(graph_data, f)
+
+        # knowledge dir
+        knowledge_dir = tmp_path / "knowledge"
+        knowledge_dir.mkdir()
+        for sub in ["rules", "skills", "patterns"]:
+            (knowledge_dir / sub).mkdir()
+            with open(knowledge_dir / sub / "_index.yaml", "w") as f:
+                yaml.safe_dump({"items": []}, f)
+
+        return tmp_path
+
+    def test_generate_includes_boot(self, bootstrap_env: Path) -> None:
+        """Test that generate output contains boot sequence content."""
+        gen = BootstrapGenerator(bootstrap_env)
+        result = gen.generate()
+        assert "=== BOOT SEQUENCE ===" in result
+        assert "Boot content here." in result
+
+    def test_generate_includes_constitution(self, bootstrap_env: Path) -> None:
+        """Test that generate output contains constitution content."""
+        gen = BootstrapGenerator(bootstrap_env)
+        result = gen.generate()
+        assert "=== CONSTITUTION (IMMUTABLE) ===" in result
+        assert "Immutable safety rules." in result
+
+    def test_generate_includes_state(self, bootstrap_env: Path) -> None:
+        """Test that generate output contains state info."""
+        gen = BootstrapGenerator(bootstrap_env)
+        result = gen.generate()
+        assert "=== CURRENT STATE ===" in result
+        assert "Goal: Build an API" in result
+        assert "Iteration: 3 / 30" in result
+
+    def test_generate_includes_philosophy(self, bootstrap_env: Path) -> None:
+        """Test that generate output contains dao and strategy content."""
+        gen = BootstrapGenerator(bootstrap_env)
+        result = gen.generate()
+        assert "=== PHILOSOPHY: DAO ===" in result
+        assert "Simplicity is the way." in result
+        assert "=== PHILOSOPHY: STRATEGY ===" in result
+        assert "Adapt and overcome." in result
+
+    def test_generate_with_defaults(self, bootstrap_env: Path) -> None:
+        """Test that generate works with no arguments (uses defaults)."""
+        gen = BootstrapGenerator(bootstrap_env)
+        result = gen.generate()
+        # Should work without error and contain content from all sections
+        assert "BOOT SEQUENCE" in result
+        assert "CONSTITUTION" in result
+        assert "CURRENT STATE" in result
+
+    def test_format_state(self, bootstrap_env: Path) -> None:
+        """Test that _format_state produces readable output."""
+        gen = BootstrapGenerator(bootstrap_env)
+        state = {
+            "goal": "Test goal",
+            "current_node": "plan",
+            "status": "running",
+            "iteration_count": 5,
+            "max_iterations": 30,
+            "errors": ["some error"],
+        }
+        result = gen._format_state(state)
+        assert "Goal: Test goal" in result
+        assert "Current Node: plan" in result
+        assert "Status: running" in result
+        assert "Iteration: 5 / 30" in result
+        assert "Last Error: some error" in result
+
+    def test_format_state_no_errors(self, bootstrap_env: Path) -> None:
+        """Test that _format_state works without errors."""
+        gen = BootstrapGenerator(bootstrap_env)
+        state = {
+            "goal": "My goal",
+            "current_node": "init",
+            "status": "idle",
+            "iteration_count": 0,
+            "max_iterations": 30,
+            "errors": [],
+        }
+        result = gen._format_state(state)
+        assert "Goal: My goal" in result
+        assert "Last Error" not in result
+
+    def test_generate_includes_role_prompt(self, bootstrap_env: Path) -> None:
+        """Test that generate includes the current node's role prompt."""
+        gen = BootstrapGenerator(bootstrap_env)
+        result = gen.generate()
+        assert "=== CURRENT ROLE PROMPT ===" in result
+        assert "Orchestrate the workflow." in result

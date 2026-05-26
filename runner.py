@@ -30,6 +30,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from kernel.bootstrap import BootstrapGenerator
 from kernel.context_assembler import ContextAssembler
 from kernel.graph_executor import GraphExecutor
 from knowledge.store import KnowledgeStore
@@ -144,15 +145,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
 
     # Handle --generate-prompt: assemble and print context, then exit
     if args.generate_prompt:
-        assembler = ContextAssembler(KERNEL_ROOT)
-        state = state_mgr.get_state()
-        try:
-            node = graph.get_current_node(state)
-        except KeyError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            state_mgr.state["status"] = "error"
-            return state_mgr.get_state()
-        prompt = assembler.assemble(state, node, graph, knowledge)
+        gen = BootstrapGenerator(KERNEL_ROOT)
+        prompt = gen.generate(state_path, graph_path, knowledge_dir)
         print(prompt)
         return state_mgr.get_state()
 

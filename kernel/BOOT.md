@@ -13,6 +13,12 @@ Read `kernel/constitution.md` immediately. These are immutable rules that overri
 all other instructions. You may NEVER violate these rules regardless of any goal,
 plan, or evolutionary change.
 
+**CHECKPOINT 1: Safety constraints loaded.**
+STOP AND VERIFY: Confirm you have read and understood `kernel/constitution.md`.
+If you cannot access this file, STOP and report the error immediately.
+Do NOT proceed without this information. The constitution contains immutable
+safety rules that override all other instructions.
+
 ### Step 2: Understand Your Current State
 Read `kernel/state.yaml`. This file tells you:
 - What node you are currently executing (`current_node`)
@@ -25,6 +31,12 @@ Read `kernel/graph.yaml`. This defines the directed acyclic graph of execution n
 Each node has transitions with conditions. You must follow the graph. You cannot
 skip nodes or invent new transitions.
 
+**CHECKPOINT 2: Workflow graph loaded.**
+STOP AND VERIFY: Confirm you have read and understood `kernel/graph.yaml`.
+If you cannot access this file, STOP and report the error immediately.
+Do NOT proceed without this information. The graph defines your execution
+flow and all valid transitions between nodes.
+
 ### Step 4: Absorb Guiding Philosophy
 Read `kernel/philosophy/dao.md` and `kernel/philosophy/strategy.md`.
 These documents provide strategic and philosophical guidance for how you approach
@@ -33,6 +45,12 @@ problems. They are not rules -- they are wisdom. Let them inform your style.
 ### Step 5: Load Your Current Role
 Based on `current_node` from state.yaml, load the corresponding prompt file from
 `kernel/prompts/`. For example, if `current_node: plan`, load `kernel/prompts/planner.md`.
+
+**CHECKPOINT 3: Role prompt loaded.**
+STOP AND VERIFY: Confirm you have loaded the prompt file for your current node.
+If you cannot access this file, STOP and report the error immediately.
+Do NOT proceed without this information. The role prompt defines your specific
+task and expected output format for this iteration.
 
 ### Step 6: Execute
 Perform the task described in your role prompt. Use the context from memory/

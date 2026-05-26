@@ -550,3 +550,52 @@ class TestKnowledgeFiles:
     def test_patterns_dir_exists(self, kernel_root: Path) -> None:
         """Test that patterns/ directory exists."""
         assert (kernel_root / "knowledge" / "patterns").is_dir()
+
+
+class TestSkillPathResolution:
+    """Tests for validating that skill paths in _index.yaml resolve correctly."""
+
+    def test_skill_paths_resolve(self, kernel_root: Path) -> None:
+        """Test that skill paths in _index.yaml resolve to existing SKILL.md files.
+
+        At least 20 of 27 skills should resolve to actual SKILL.md files.
+        Skills with paths that do not resolve are reported as warnings.
+        """
+        index_path = kernel_root / "knowledge" / "skills" / "_index.yaml"
+        data = yaml.safe_load(index_path.read_text())
+        items = data.get("items", [])
+        assert len(items) == 27, f"Expected 27 skills in index, found {len(items)}"
+
+        resolved = []
+        unresolved = []
+
+        for skill in items:
+            name = skill["name"]
+            path = skill.get("path", "")
+
+            # Try knowledge/skills/{path}/SKILL.md
+            option1 = kernel_root / "knowledge" / "skills" / path / "SKILL.md"
+            # Try {path}/SKILL.md relative to repo root
+            option2 = kernel_root / path / "SKILL.md"
+
+            if option1.exists() or option2.exists():
+                resolved.append(name)
+            else:
+                unresolved.append(name)
+
+        # At least 20 of 27 should resolve
+        assert len(resolved) >= 20, (
+            f"Only {len(resolved)}/27 skills resolved. "
+            f"Unresolved: {unresolved}"
+        )
+
+    def test_skill_index_has_required_fields(self, kernel_root: Path) -> None:
+        """Test that all skill entries have name, path, and description."""
+        index_path = kernel_root / "knowledge" / "skills" / "_index.yaml"
+        data = yaml.safe_load(index_path.read_text())
+        items = data.get("items", [])
+
+        for skill in items:
+            assert "name" in skill, f"Skill missing 'name': {skill}"
+            assert "path" in skill, f"Skill '{skill.get('name', '?')}' missing 'path'"
+            assert "description" in skill, f"Skill '{skill['name']}' missing 'description'"

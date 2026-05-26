@@ -527,7 +527,7 @@ class TestGeneratePrompt:
         captured = capsys.readouterr()
         assert "=== BOOT SEQUENCE ===" in captured.out
         assert "=== CURRENT STATE ===" in captured.out
-        assert "=== NODE PROMPT (init) ===" in captured.out
+        assert "=== CURRENT ROLE PROMPT ===" in captured.out
         assert "=== PHILOSOPHY: DAO ===" in captured.out
         assert "=== PHILOSOPHY: STRATEGY ===" in captured.out
 
@@ -539,7 +539,7 @@ class TestGeneratePrompt:
         assert state["iteration_count"] == 0
 
     def test_generate_prompt_with_invalid_node(self, runner_env: Path, monkeypatch, capsys) -> None:
-        """Test --generate-prompt with invalid current node shows error."""
+        """Test --generate-prompt with invalid current node still produces output."""
         # Set state to reference a non-existent node
         state_file = runner_env / "kernel" / "state.yaml"
         state_data = {
@@ -557,9 +557,12 @@ class TestGeneratePrompt:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
         state = runner.main(["--goal", "test", "--generate-prompt"])
-        assert state["status"] == "error"
         captured = capsys.readouterr()
-        assert "nonexistent" in captured.err
+        # BootstrapGenerator gracefully skips missing node prompt
+        assert "=== BOOT SEQUENCE ===" in captured.out
+        assert "=== CURRENT STATE ===" in captured.out
+        # No role prompt section since node doesn't exist
+        assert "=== CURRENT ROLE PROMPT ===" not in captured.out
 
 
 class TestResume:
