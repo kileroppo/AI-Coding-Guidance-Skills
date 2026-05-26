@@ -15,49 +15,100 @@ class SkillComposer:
     to handle complex development tasks.
     """
 
-    def __init__(self, skills_dir: Path) -> None:
+    def __init__(self, knowledge_store: Any) -> None:
         """Initialize the skill composer.
 
         Args:
-            skills_dir: Path to the knowledge/skills/ directory.
+            knowledge_store: A KnowledgeStore instance.
         """
-        self.skills_dir = skills_dir
+        self.knowledge_store = knowledge_store
 
-    def list_skills(self) -> list[str]:
-        """List all available skill IDs.
+    def compose(self, skill_names: list) -> str:
+        """Load each skill's SKILL.md content and combine into one prompt string.
 
-        Returns:
-            List of skill identifiers.
-
-        Raises:
-            NotImplementedError: This method is a placeholder for FEAT-002.
-        """
-        raise NotImplementedError("Skill listing will be implemented in FEAT-002")
-
-    def load_skill(self, skill_id: str) -> dict[str, Any]:
-        """Load a specific skill by ID.
+        Prefixes each with a header (## Skill: {name}).
 
         Args:
-            skill_id: The identifier of the skill to load.
-
-        Returns:
-            Dict with skill definition and content.
-
-        Raises:
-            NotImplementedError: This method is a placeholder for FEAT-002.
-        """
-        raise NotImplementedError("Skill loading will be implemented in FEAT-002")
-
-    def compose(self, skill_ids: list[str]) -> str:
-        """Compose multiple skills into a single context prompt.
-
-        Args:
-            skill_ids: List of skill identifiers to compose.
+            skill_names: List of skill names to compose.
 
         Returns:
             Combined prompt string with all skill content.
 
         Raises:
-            NotImplementedError: This method is a placeholder for FEAT-002.
+            ValueError: If any skill is missing.
         """
-        raise NotImplementedError("Skill composition will be implemented in FEAT-002")
+        issues = self.validate_composition(skill_names)
+        if issues:
+            raise ValueError(f"Composition validation failed: {'; '.join(issues)}")
+
+        ordered = self.resolve_order(skill_names)
+        parts = []
+        for name in ordered:
+            content = self.get_skill_content(name)
+            parts.append(f"## Skill: {name}\n\n{content}")
+
+        return "\n\n---\n\n".join(parts)
+
+    def validate_composition(self, skill_names: list) -> list:
+        """Return list of issues (missing skills, etc.).
+
+        Args:
+            skill_names: List of skill names to validate.
+
+        Returns:
+            List of issue strings. Empty if all valid.
+        """
+        issues = []
+        if not skill_names:
+            issues.append("No skills specified")
+            return issues
+        for name in skill_names:
+            try:
+                self.knowledge_store.get_skill(name)
+            except KeyError:
+                issues.append(f"Skill not found: {name}")
+        return issues
+
+    def get_skill_content(self, skill_name: str) -> str:
+        """Read the SKILL.md file for a given skill.
+
+        Args:
+            skill_name: The skill name.
+
+        Returns:
+            The content of the SKILL.md file.
+
+        Raises:
+            FileNotFoundError: If the SKILL.md file does not exist.
+        """
+        skill = self.knowledge_store.get_skill(skill_name)
+        skill_path = Path(skill.get("path", skill_name))
+
+        # Try relative to knowledge_root/skills/
+        skill_md = self.knowledge_store.skills_dir / skill_path / "SKILL.md"
+        if skill_md.exists():
+            return skill_md.read_text(encoding="utf-8")
+
+        # Try the path directly (for skills at repo root level)
+        # Go up from knowledge dir to find repo root
+        repo_root = self.knowledge_store.knowledge_root.parent
+        alt_path = repo_root / skill_path / "SKILL.md"
+        if alt_path.exists():
+            return alt_path.read_text(encoding="utf-8")
+
+        raise FileNotFoundError(
+            f"SKILL.md not found for skill '{skill_name}' at {skill_md} or {alt_path}"
+        )
+
+    def resolve_order(self, skill_names: list) -> list:
+        """Resolve ordering for skill composition.
+
+        For now, returns as-is (no dependency resolution needed yet).
+
+        Args:
+            skill_names: List of skill names.
+
+        Returns:
+            Ordered list of skill names.
+        """
+        return list(skill_names)

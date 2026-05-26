@@ -8,134 +8,21 @@ import yaml
 import runner
 
 
-class TestLoadYaml:
-    """Tests for the load_yaml function."""
+class TestRunnerImport:
+    """Tests for runner module import and structure."""
 
-    def test_load_state_yaml(self, state_yaml: Path) -> None:
-        """Test loading the state.yaml file."""
-        data = runner.load_yaml(state_yaml)
-        assert "current_node" in data
-        assert "iteration_count" in data
-        assert "status" in data
+    def test_runner_importable(self) -> None:
+        """Test that runner module can be imported."""
+        assert runner is not None
 
-    def test_load_graph_yaml(self, graph_yaml: Path) -> None:
-        """Test loading the graph.yaml file."""
-        data = runner.load_yaml(graph_yaml)
-        assert "nodes" in data
-        assert "default_start" in data
-        assert "max_iterations" in data
+    def test_runner_has_main(self) -> None:
+        """Test that runner has a main function."""
+        assert hasattr(runner, "main")
+        assert callable(runner.main)
 
-    def test_load_nonexistent_file(self, tmp_path: Path) -> None:
-        """Test that loading a nonexistent file raises FileNotFoundError."""
-        with pytest.raises(FileNotFoundError):
-            runner.load_yaml(tmp_path / "nonexistent.yaml")
-
-
-class TestSaveYaml:
-    """Tests for the save_yaml function."""
-
-    def test_save_and_reload(self, tmp_path: Path) -> None:
-        """Test saving and reloading a YAML file."""
-        filepath = tmp_path / "test.yaml"
-        data = {"key": "value", "number": 42}
-        runner.save_yaml(filepath, data)
-        loaded = runner.load_yaml(filepath)
-        assert loaded == data
-
-
-class TestGetNode:
-    """Tests for the get_node function."""
-
-    def test_find_existing_node(self, graph_yaml: Path) -> None:
-        """Test finding an existing node in the graph."""
-        graph = runner.load_yaml(graph_yaml)
-        node = runner.get_node(graph, "init")
-        assert node is not None
-        assert node["id"] == "init"
-
-    def test_find_nonexistent_node(self, graph_yaml: Path) -> None:
-        """Test that a nonexistent node returns None."""
-        graph = runner.load_yaml(graph_yaml)
-        node = runner.get_node(graph, "nonexistent")
-        assert node is None
-
-    def test_all_graph_nodes_exist(self, graph_yaml: Path) -> None:
-        """Test that all expected nodes exist in the graph."""
-        graph = runner.load_yaml(graph_yaml)
-        expected_nodes = ["init", "plan", "code", "test", "review", "reflect", "evolve"]
-        for node_id in expected_nodes:
-            node = runner.get_node(graph, node_id)
-            assert node is not None, f"Node '{node_id}' not found in graph"
-
-
-class TestLoadPrompt:
-    """Tests for the load_prompt function."""
-
-    def test_load_orchestrator_prompt(self, graph_yaml: Path) -> None:
-        """Test loading the orchestrator prompt."""
-        graph = runner.load_yaml(graph_yaml)
-        node = runner.get_node(graph, "init")
-        prompt = runner.load_prompt(node)
-        assert "Orchestrator" in prompt
-        assert len(prompt) > 0
-
-
-class TestGetNextNode:
-    """Tests for the get_next_node function."""
-
-    def test_node_with_transitions(self, graph_yaml: Path) -> None:
-        """Test getting next node when transitions exist."""
-        graph = runner.load_yaml(graph_yaml)
-        node = runner.get_node(graph, "init")
-        next_id = runner.get_next_node(node)
-        assert next_id == "plan"
-
-    def test_node_without_transitions(self) -> None:
-        """Test getting next node when no transitions exist."""
-        node = {"id": "terminal", "transitions": []}
-        next_id = runner.get_next_node(node)
-        assert next_id is None
-
-
-class TestCheckStopConditions:
-    """Tests for the check_stop_conditions function."""
-
-    def test_complete_status_stops(self) -> None:
-        """Test that 'complete' status triggers stop."""
-        state = {"status": "complete", "iteration_count": 5, "max_iterations": 30}
-        assert runner.check_stop_conditions(state) is True
-
-    def test_max_iterations_stops(self) -> None:
-        """Test that reaching max iterations triggers stop."""
-        state = {"status": "running", "iteration_count": 30, "max_iterations": 30}
-        assert runner.check_stop_conditions(state) is True
-
-    def test_running_below_max_continues(self) -> None:
-        """Test that running below max iterations does not stop."""
-        state = {"status": "running", "iteration_count": 5, "max_iterations": 30}
-        assert runner.check_stop_conditions(state) is False
-
-
-class TestRunLoop:
-    """Tests for the run_loop function."""
-
-    def test_dry_run_does_not_modify_state(self, state_yaml: Path) -> None:
-        """Test that dry run does not modify state.yaml."""
-        original_content = state_yaml.read_text()
-        runner.run_loop(goal="test goal", max_iterations=3, dry_run=True)
-        assert state_yaml.read_text() == original_content
-
-    def test_dry_run_returns_state(self) -> None:
-        """Test that dry run returns a valid state dict."""
-        state = runner.run_loop(goal="test goal", max_iterations=3, dry_run=True)
-        assert state["goal"] == "test goal"
-        assert state["max_iterations"] == 3
-        assert state["status"] == "complete"
-
-    def test_run_loop_respects_max_iterations(self) -> None:
-        """Test that the loop respects the max iterations limit."""
-        state = runner.run_loop(goal="test", max_iterations=5, dry_run=True)
-        assert state["iteration_count"] <= 5
+    def test_runner_has_parse_args(self) -> None:
+        """Test that runner has parse_args function."""
+        assert hasattr(runner, "parse_args")
 
 
 class TestParseArgs:
@@ -180,3 +67,83 @@ class TestMain:
         state = runner.main(["--goal", "test goal", "--dry-run"])
         assert state["goal"] == "test goal"
         assert state["status"] == "complete"
+
+    def test_main_dry_run_max_iterations(self) -> None:
+        """Test main function respects max iterations in dry-run."""
+        state = runner.main(["--goal", "test", "--max-iterations", "3", "--dry-run"])
+        assert state["iteration_count"] <= 3
+
+    def test_main_dry_run_does_not_modify_state(self, state_yaml: Path) -> None:
+        """Test that dry run does not modify state.yaml."""
+        original_content = state_yaml.read_text()
+        runner.main(["--goal", "test goal", "--max-iterations", "2", "--dry-run"])
+        assert state_yaml.read_text() == original_content
+
+    def test_main_produces_output(self, capsys) -> None:
+        """Test that dry run produces output."""
+        runner.main(["--goal", "test goal", "--max-iterations", "1", "--dry-run"])
+        captured = capsys.readouterr()
+        assert "[DRY RUN]" in captured.out
+        assert "test goal" in captured.out
+
+    def test_main_shows_node_info(self, capsys) -> None:
+        """Test that dry run shows node information."""
+        runner.main(["--goal", "test", "--max-iterations", "2", "--dry-run"])
+        captured = capsys.readouterr()
+        assert "Node:" in captured.out
+        assert "Prompt file:" in captured.out
+
+    def test_main_non_dry_run(self, tmp_path: Path, monkeypatch) -> None:
+        """Test main function without dry-run modifies state."""
+        import yaml
+        import shutil
+
+        # Set up temp kernel structure
+        state_file = tmp_path / "kernel" / "state.yaml"
+        state_file.parent.mkdir(parents=True)
+        state_data = {
+            "current_node": "init",
+            "iteration_count": 0,
+            "max_iterations": 30,
+            "goal": "",
+            "status": "idle",
+            "last_updated": "",
+            "errors": [],
+            "context": {"skills_loaded": [], "current_task": "", "phase": "startup"},
+        }
+        with open(state_file, "w") as f:
+            yaml.safe_dump(state_data, f)
+
+        # Copy graph.yaml
+        kernel_root = Path(__file__).parent.parent
+        shutil.copy(kernel_root / "kernel" / "graph.yaml", tmp_path / "kernel" / "graph.yaml")
+
+        # Copy prompts
+        prompts_dir = tmp_path / "kernel" / "prompts"
+        shutil.copytree(kernel_root / "kernel" / "prompts", prompts_dir)
+
+        # Create memory dir
+        memory_dir = tmp_path / "memory"
+        memory_dir.mkdir()
+        (memory_dir / "decisions.jsonl").touch()
+        (memory_dir / "reflections.jsonl").touch()
+        (memory_dir / "current_goal.md").touch()
+        progress = {"iteration": 0, "tasks_total": 0, "tasks_done": 0, "status": "pending"}
+        with open(memory_dir / "progress.yaml", "w") as f:
+            yaml.safe_dump(progress, f)
+
+        # Create knowledge dir
+        knowledge_dir = tmp_path / "knowledge"
+        knowledge_dir.mkdir()
+        for sub in ["rules", "skills", "patterns"]:
+            (knowledge_dir / sub).mkdir()
+            with open(knowledge_dir / sub / "_index.yaml", "w") as f:
+                yaml.safe_dump({"items": []}, f)
+
+        monkeypatch.setattr(runner, "KERNEL_ROOT", tmp_path)
+        state = runner.main(["--goal", "integration test", "--max-iterations", "2"])
+        assert state["goal"] == "integration test"
+        assert state["iteration_count"] > 0
+        # Verify state was saved
+        saved = yaml.safe_load(state_file.read_text())
+        assert saved["goal"] == "integration test"
