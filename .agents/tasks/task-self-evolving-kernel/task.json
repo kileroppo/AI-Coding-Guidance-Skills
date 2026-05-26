@@ -1,0 +1,7 @@
+{
+  "task_id": "task-self-evolving-kernel",
+  "task_description": "Build a self-evolving AI development kernel - a filesystem-based orchestration system that any AI agent can read and be guided by. Includes: BOOT.md entry point, workflow graph, state management, knowledge store with composable skills, self-evolution engine, philosophy-guided prompts (Dao De Jing + Art of War), and comprehensive tests at 90%+ coverage. External skills (Ralph, UI/UX) are integrated. Runner.py provides the execution loop.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004"],
+  "blocked_reason": null
+}
