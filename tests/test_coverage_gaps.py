@@ -638,7 +638,7 @@ class TestRunnerGaps:
                     "prompt_file": "prompts/orchestrator.md",
                     "description": "Initialize",
                     "transitions": [{"to": "init", "condition": "loop"}],
-                    "max_retries": 1,
+                    "max_retries": 10,
                 },
             ],
             "default_start": "init",

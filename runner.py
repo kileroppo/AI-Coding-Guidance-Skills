@@ -168,6 +168,12 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     if mode3:
         assembler = ContextAssembler(KERNEL_ROOT)
 
+    # Build max_retries_map from graph nodes
+    max_retries_map = {
+        node["id"]: node.get("max_retries", 10)
+        for node in graph.graph.get("nodes", [])
+    }
+
     for i in range(args.max_iterations):
         state = state_mgr.get_state()
 
@@ -248,6 +254,26 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     # No TRANSITION line - fallback to first transition
                     next_node_id = transitions[0]["to"]
                 state_mgr.set_current_node(next_node_id)
+
+                # Track visit and check stuck
+                state_mgr.track_node_visit(next_node_id)
+                is_stuck, stuck_node, visits = state_mgr.check_stuck(max_retries_map)
+                if is_stuck:
+                    # Check for stuck_handler
+                    try:
+                        stuck_node_def = graph.get_node(stuck_node)
+                        handler = stuck_node_def.get("stuck_handler")
+                    except KeyError:
+                        handler = None
+                    if handler:
+                        state_mgr.set_current_node(handler)
+                    else:
+                        state_mgr.state["status"] = "stuck"
+                        state_mgr.state.setdefault("errors", []).append(
+                            f"Node '{stuck_node}' exceeded max_retries "
+                            f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
+                        )
+                        break
             else:
                 state_mgr.state["status"] = "complete"
                 break
@@ -261,9 +287,43 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             if transitions:
                 next_node_id = transitions[0]["to"]
                 state_mgr.set_current_node(next_node_id)
-                if args.dry_run:
-                    print(f"  Next node: {next_node_id}")
-                    print()
+
+                # Track visit and check stuck
+                state_mgr.track_node_visit(next_node_id)
+                is_stuck, stuck_node, visits = state_mgr.check_stuck(max_retries_map)
+                if is_stuck:
+                    # Check for stuck_handler
+                    try:
+                        stuck_node_def = graph.get_node(stuck_node)
+                        handler = stuck_node_def.get("stuck_handler")
+                    except KeyError:
+                        handler = None
+                    if handler:
+                        if args.dry_run:
+                            print(
+                                f"  STUCK: Node '{stuck_node}' exceeded max_retries "
+                                f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
+                            )
+                            print(f"  Redirecting to stuck_handler: {handler}")
+                            print()
+                        state_mgr.set_current_node(handler)
+                    else:
+                        if args.dry_run:
+                            print(
+                                f"  STUCK: Node '{stuck_node}' exceeded max_retries "
+                                f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
+                            )
+                            print()
+                        state_mgr.state["status"] = "stuck"
+                        state_mgr.state.setdefault("errors", []).append(
+                            f"Node '{stuck_node}' exceeded max_retries "
+                            f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
+                        )
+                        break
+                else:
+                    if args.dry_run:
+                        print(f"  Next node: {next_node_id}")
+                        print()
             else:
                 state_mgr.state["status"] = "complete"
                 if args.dry_run:

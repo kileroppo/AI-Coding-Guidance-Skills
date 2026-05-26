@@ -688,3 +688,185 @@ class TestParseTransition:
     def test_parse_transition_empty_output(self) -> None:
         """Test parsing empty output."""
         assert runner._parse_transition("") is None
+
+
+class TestStuckDetection:
+    """Tests for stuck detection in the runner."""
+
+    @pytest.fixture
+    def stuck_env(self, tmp_path: Path) -> Path:
+        """Set up an environment where a node will get stuck (cycling graph)."""
+        kernel_dir = tmp_path / "kernel"
+        kernel_dir.mkdir()
+
+        state_data = {
+            "current_node": "init",
+            "iteration_count": 0,
+            "max_iterations": 30,
+            "goal": "",
+            "status": "idle",
+            "last_updated": "",
+            "errors": [],
+            "context": {"skills_loaded": [], "current_task": "", "phase": "startup"},
+        }
+        with open(kernel_dir / "state.yaml", "w") as f:
+            yaml.safe_dump(state_data, f)
+
+        # Graph where code cycles back to itself with max_retries=2
+        graph_data = {
+            "nodes": [
+                {
+                    "id": "init",
+                    "prompt_file": "prompts/orchestrator.md",
+                    "description": "Initialize",
+                    "transitions": [{"to": "code", "condition": "goal_loaded"}],
+                    "max_retries": 1,
+                },
+                {
+                    "id": "code",
+                    "prompt_file": "prompts/coder.md",
+                    "description": "Write code",
+                    "transitions": [{"to": "code", "condition": "code_needs_retry"}],
+                    "max_retries": 2,
+                },
+            ],
+            "default_start": "init",
+            "max_iterations": 30,
+        }
+        with open(kernel_dir / "graph.yaml", "w") as f:
+            yaml.safe_dump(graph_data, f)
+
+        (kernel_dir / "prompts").mkdir()
+        (kernel_dir / "prompts" / "orchestrator.md").write_text("Orchestrator prompt")
+        (kernel_dir / "prompts" / "coder.md").write_text("Coder prompt")
+        (kernel_dir / "BOOT.md").write_text("# Boot")
+        (kernel_dir / "philosophy").mkdir()
+        (kernel_dir / "philosophy" / "dao.md").write_text("# Dao")
+        (kernel_dir / "philosophy" / "strategy.md").write_text("# Strategy")
+
+        memory_dir = tmp_path / "memory"
+        memory_dir.mkdir()
+        (memory_dir / "decisions.jsonl").touch()
+        (memory_dir / "reflections.jsonl").touch()
+        (memory_dir / "current_goal.md").touch()
+        with open(memory_dir / "progress.yaml", "w") as f:
+            yaml.safe_dump({"iteration": 0, "tasks_total": 0, "tasks_done": 0, "status": "pending"}, f)
+
+        knowledge_dir = tmp_path / "knowledge"
+        knowledge_dir.mkdir()
+        for sub in ["rules", "skills", "patterns"]:
+            (knowledge_dir / sub).mkdir()
+            with open(knowledge_dir / sub / "_index.yaml", "w") as f:
+                yaml.safe_dump({"items": []}, f)
+
+        return tmp_path
+
+    @pytest.fixture
+    def stuck_handler_env(self, tmp_path: Path) -> Path:
+        """Set up an environment with stuck_handler on the cycling node."""
+        kernel_dir = tmp_path / "kernel"
+        kernel_dir.mkdir()
+
+        state_data = {
+            "current_node": "init",
+            "iteration_count": 0,
+            "max_iterations": 30,
+            "goal": "",
+            "status": "idle",
+            "last_updated": "",
+            "errors": [],
+            "context": {"skills_loaded": [], "current_task": "", "phase": "startup"},
+        }
+        with open(kernel_dir / "state.yaml", "w") as f:
+            yaml.safe_dump(state_data, f)
+
+        # Graph where code cycles back to itself with max_retries=2 and stuck_handler
+        graph_data = {
+            "nodes": [
+                {
+                    "id": "init",
+                    "prompt_file": "prompts/orchestrator.md",
+                    "description": "Initialize",
+                    "transitions": [{"to": "code", "condition": "goal_loaded"}],
+                    "max_retries": 1,
+                },
+                {
+                    "id": "code",
+                    "prompt_file": "prompts/coder.md",
+                    "description": "Write code",
+                    "transitions": [{"to": "code", "condition": "code_needs_retry"}],
+                    "max_retries": 2,
+                    "stuck_handler": "reflect",
+                },
+                {
+                    "id": "reflect",
+                    "prompt_file": "prompts/orchestrator.md",
+                    "description": "Reflect on progress",
+                    "transitions": [],
+                    "max_retries": 1,
+                },
+            ],
+            "default_start": "init",
+            "max_iterations": 30,
+        }
+        with open(kernel_dir / "graph.yaml", "w") as f:
+            yaml.safe_dump(graph_data, f)
+
+        (kernel_dir / "prompts").mkdir()
+        (kernel_dir / "prompts" / "orchestrator.md").write_text("Orchestrator prompt")
+        (kernel_dir / "prompts" / "coder.md").write_text("Coder prompt")
+        (kernel_dir / "BOOT.md").write_text("# Boot")
+        (kernel_dir / "philosophy").mkdir()
+        (kernel_dir / "philosophy" / "dao.md").write_text("# Dao")
+        (kernel_dir / "philosophy" / "strategy.md").write_text("# Strategy")
+
+        memory_dir = tmp_path / "memory"
+        memory_dir.mkdir()
+        (memory_dir / "decisions.jsonl").touch()
+        (memory_dir / "reflections.jsonl").touch()
+        (memory_dir / "current_goal.md").touch()
+        with open(memory_dir / "progress.yaml", "w") as f:
+            yaml.safe_dump({"iteration": 0, "tasks_total": 0, "tasks_done": 0, "status": "pending"}, f)
+
+        knowledge_dir = tmp_path / "knowledge"
+        knowledge_dir.mkdir()
+        for sub in ["rules", "skills", "patterns"]:
+            (knowledge_dir / sub).mkdir()
+            with open(knowledge_dir / sub / "_index.yaml", "w") as f:
+                yaml.safe_dump({"items": []}, f)
+
+        return tmp_path
+
+    def test_runner_detects_stuck_and_stops(self, stuck_env: Path, monkeypatch) -> None:
+        """Test runner stops with 'stuck' status when max_retries exceeded."""
+        monkeypatch.setattr(runner, "KERNEL_ROOT", stuck_env)
+        state = runner.main([
+            "--goal", "test stuck detection",
+            "--max-iterations", "20",
+        ])
+        assert state["status"] == "stuck"
+        assert any("exceeded max_retries" in e for e in state.get("errors", []))
+
+    def test_runner_stuck_handler_redirect(self, stuck_handler_env: Path, monkeypatch) -> None:
+        """Test runner redirects to stuck_handler node when max_retries exceeded."""
+        monkeypatch.setattr(runner, "KERNEL_ROOT", stuck_handler_env)
+        state = runner.main([
+            "--goal", "test stuck handler",
+            "--max-iterations", "20",
+        ])
+        # Should redirect to reflect and then complete (reflect has no transitions)
+        assert state["current_node"] == "reflect"
+        assert state["status"] == "complete"
+
+    def test_runner_stuck_in_dry_run(self, stuck_env: Path, monkeypatch, capsys) -> None:
+        """Test dry-run prints stuck message when max_retries exceeded."""
+        monkeypatch.setattr(runner, "KERNEL_ROOT", stuck_env)
+        state = runner.main([
+            "--goal", "test stuck dry run",
+            "--max-iterations", "20",
+            "--dry-run",
+        ])
+        captured = capsys.readouterr()
+        assert "STUCK" in captured.out
+        assert "exceeded max_retries" in captured.out
+        assert state["status"] == "stuck"

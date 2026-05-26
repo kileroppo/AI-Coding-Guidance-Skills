@@ -4,6 +4,7 @@ This module handles reading, updating, and persisting the kernel's state
 including current node, iteration count, goals, and error tracking.
 """
 
+import copy
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,8 @@ DEFAULT_STATE = {
         "current_task": "",
         "phase": "startup",
     },
+    "node_visits": {},
+    "progress_history": [],
 }
 
 
@@ -54,7 +57,7 @@ class StateManager:
         """
         if not self.state_path.exists():
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            state = dict(DEFAULT_STATE)
+            state = copy.deepcopy(DEFAULT_STATE)
             state["last_updated"] = datetime.now(timezone.utc).isoformat()
             with open(self.state_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(state, f, default_flow_style=False, allow_unicode=True)
@@ -64,7 +67,7 @@ class StateManager:
         # Merge with defaults for any missing keys
         for key, value in DEFAULT_STATE.items():
             if key not in data:
-                data[key] = value
+                data[key] = copy.deepcopy(value)
         self.state = data
         return data
 
@@ -171,6 +174,60 @@ class StateManager:
 
     def reset(self) -> None:
         """Reset state to defaults."""
-        self.state = dict(DEFAULT_STATE)
+        self.state = copy.deepcopy(DEFAULT_STATE)
         self.state["last_updated"] = datetime.now(timezone.utc).isoformat()
         self.save_state()
+
+    def track_node_visit(self, node_id: str) -> int:
+        """Increment and return the visit count for a node.
+
+        Args:
+            node_id: The node being visited.
+
+        Returns:
+            The new visit count for this node.
+        """
+        if "node_visits" not in self.state:
+            self.state["node_visits"] = {}
+        self.state["node_visits"][node_id] = self.state["node_visits"].get(node_id, 0) + 1
+        return self.state["node_visits"][node_id]
+
+    def check_stuck(self, max_retries_map: dict) -> tuple[bool, str | None, int]:
+        """Check if any node has exceeded its max_retries.
+
+        Args:
+            max_retries_map: Dict of {node_id: max_retries_allowed}
+
+        Returns:
+            Tuple of (is_stuck, stuck_node_id_or_None, visit_count)
+        """
+        node_visits = self.state.get("node_visits", {})
+        for node_id, visits in node_visits.items():
+            max_allowed = max_retries_map.get(node_id, float('inf'))
+            if visits > max_allowed:
+                return (True, node_id, visits)
+        return (False, None, 0)
+
+    def check_convergence(self, lookback: int = 5) -> tuple[bool, int]:
+        """Check if progress has stalled (tasks_done unchanged over lookback iterations).
+
+        Looks at the progress_history list in state. If the last `lookback` entries
+        all have the same tasks_done value and iteration_count > lookback, progress
+        is considered stalled.
+
+        Args:
+            lookback: Number of iterations without progress to consider stalled.
+
+        Returns:
+            Tuple of (is_stalled, stale_iterations_count).
+        """
+        history = self.state.get("progress_history", [])
+        if len(history) < lookback:
+            return (False, 0)
+        recent = history[-lookback:]
+        # All recent entries have same tasks_done value
+        if all(entry == recent[0] for entry in recent):
+            iteration_count = self.state.get("iteration_count", 0)
+            if iteration_count > lookback:
+                return (True, lookback)
+        return (False, 0)
