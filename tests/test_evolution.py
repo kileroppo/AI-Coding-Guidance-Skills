@@ -342,3 +342,159 @@ class TestApplyReorder:
         assert result is False
         history = engine.get_history()
         assert history[-1]["status"] == "failed"
+
+
+class TestEvolutionMetrics:
+    """Tests for the EvolutionMetrics class."""
+
+    def test_record_and_get_metrics(self) -> None:
+        """Test recording iterations and getting metrics."""
+        from kernel.evolution.metrics import EvolutionMetrics
+
+        metrics = EvolutionMetrics(window_size=10)
+        metrics.record_iteration("code", success=True, retries=0, duration=1.0)
+        metrics.record_iteration("code", success=True, retries=1, duration=2.0)
+        metrics.record_iteration("code", success=False, retries=2, duration=3.0)
+
+        result = metrics.get_node_metrics("code")
+        assert result["sample_count"] == 3
+        assert abs(result["success_rate"] - 2 / 3) < 0.01
+        assert abs(result["avg_retries"] - 1.0) < 0.01
+        assert abs(result["avg_duration"] - 2.0) < 0.01
+
+    def test_sliding_window_limit(self) -> None:
+        """Test that sliding window drops oldest records."""
+        from kernel.evolution.metrics import EvolutionMetrics
+
+        metrics = EvolutionMetrics(window_size=3)
+        metrics.record_iteration("plan", success=False, retries=0, duration=1.0)
+        metrics.record_iteration("plan", success=True, retries=0, duration=1.0)
+        metrics.record_iteration("plan", success=True, retries=0, duration=1.0)
+        metrics.record_iteration("plan", success=True, retries=0, duration=1.0)
+
+        result = metrics.get_node_metrics("plan")
+        assert result["sample_count"] == 3
+        # Oldest (False) should be dropped, all 3 remaining are True
+        assert result["success_rate"] == 1.0
+
+    def test_get_node_metrics_empty(self) -> None:
+        """Test getting metrics for a node with no data returns zeros."""
+        from kernel.evolution.metrics import EvolutionMetrics
+
+        metrics = EvolutionMetrics()
+        result = metrics.get_node_metrics("nonexistent")
+        assert result["success_rate"] == 0.0
+        assert result["avg_retries"] == 0.0
+        assert result["avg_duration"] == 0.0
+        assert result["sample_count"] == 0
+
+    def test_get_overall_health_all_success(self) -> None:
+        """Test overall health when all iterations succeed."""
+        from kernel.evolution.metrics import EvolutionMetrics
+
+        metrics = EvolutionMetrics()
+        metrics.record_iteration("code", success=True, retries=0, duration=1.0)
+        metrics.record_iteration("plan", success=True, retries=0, duration=1.0)
+        metrics.record_iteration("test", success=True, retries=0, duration=1.0)
+
+        assert metrics.get_overall_health() == 1.0
+
+    def test_get_overall_health_mixed(self) -> None:
+        """Test overall health with mixed results is between 0 and 1."""
+        from kernel.evolution.metrics import EvolutionMetrics
+
+        metrics = EvolutionMetrics()
+        metrics.record_iteration("code", success=True, retries=0, duration=1.0)
+        metrics.record_iteration("code", success=False, retries=0, duration=1.0)
+        metrics.record_iteration("plan", success=False, retries=0, duration=1.0)
+
+        health = metrics.get_overall_health()
+        assert 0.0 < health < 1.0
+
+    def test_get_overall_health_no_data(self) -> None:
+        """Test overall health with no data returns 1.0."""
+        from kernel.evolution.metrics import EvolutionMetrics
+
+        metrics = EvolutionMetrics()
+        assert metrics.get_overall_health() == 1.0
+
+    def test_compare_periods_improvement(self) -> None:
+        """Test compare_periods detects improvement."""
+        from kernel.evolution.metrics import EvolutionMetrics
+
+        metrics = EvolutionMetrics(window_size=10)
+        # First half: failures
+        metrics.record_iteration("code", success=False, retries=0, duration=1.0)
+        metrics.record_iteration("code", success=False, retries=0, duration=1.0)
+        # Second half: successes
+        metrics.record_iteration("code", success=True, retries=0, duration=1.0)
+        metrics.record_iteration("code", success=True, retries=0, duration=1.0)
+
+        result = metrics.compare_periods("code")
+        assert result["before_success_rate"] == 0.0
+        assert result["after_success_rate"] == 1.0
+        assert result["delta"] == 1.0
+
+    def test_compare_periods_degradation(self) -> None:
+        """Test compare_periods detects degradation."""
+        from kernel.evolution.metrics import EvolutionMetrics
+
+        metrics = EvolutionMetrics(window_size=10)
+        # First half: successes
+        metrics.record_iteration("code", success=True, retries=0, duration=1.0)
+        metrics.record_iteration("code", success=True, retries=0, duration=1.0)
+        # Second half: failures
+        metrics.record_iteration("code", success=False, retries=0, duration=1.0)
+        metrics.record_iteration("code", success=False, retries=0, duration=1.0)
+
+        result = metrics.compare_periods("code")
+        assert result["before_success_rate"] == 1.0
+        assert result["after_success_rate"] == 0.0
+        assert result["delta"] == -1.0
+
+
+class TestRevertIfWorse:
+    """Tests for revert_if_worse."""
+
+    def test_revert_if_worse_reverts(self, evolution_setup) -> None:
+        """Test that revert_if_worse rolls back when metrics degrade."""
+        engine, _, graph_executor = evolution_setup
+        # Apply a change first
+        change = engine.propose_change(
+            "add_node",
+            {"node": {"id": "revert_test", "description": "test"}},
+            "will be reverted",
+        )
+        engine.apply_change(change)
+        # Verify node exists
+        assert graph_executor.get_node("revert_test") is not None
+
+        # Metrics show degradation (dropped from 0.8 to 0.5)
+        metrics_before = {"success_rate": 0.8, "avg_retries": 0.0, "avg_duration": 1.0, "sample_count": 5}
+        metrics_after = {"success_rate": 0.5, "avg_retries": 1.0, "avg_duration": 2.0, "sample_count": 5}
+
+        result = engine.revert_if_worse(change["id"], metrics_before, metrics_after, threshold=0.1)
+        assert result is True
+        # Node should be removed after rollback
+        with pytest.raises(KeyError):
+            graph_executor.get_node("revert_test")
+
+    def test_revert_if_worse_keeps(self, evolution_setup) -> None:
+        """Test that revert_if_worse does not rollback when metrics are stable."""
+        engine, _, graph_executor = evolution_setup
+        # Apply a change first
+        change = engine.propose_change(
+            "add_node",
+            {"node": {"id": "keep_test", "description": "test"}},
+            "will be kept",
+        )
+        engine.apply_change(change)
+
+        # Metrics show slight improvement
+        metrics_before = {"success_rate": 0.7, "avg_retries": 1.0, "avg_duration": 2.0, "sample_count": 5}
+        metrics_after = {"success_rate": 0.75, "avg_retries": 0.5, "avg_duration": 1.5, "sample_count": 5}
+
+        result = engine.revert_if_worse(change["id"], metrics_before, metrics_after, threshold=0.1)
+        assert result is False
+        # Node should still exist
+        assert graph_executor.get_node("keep_test") is not None

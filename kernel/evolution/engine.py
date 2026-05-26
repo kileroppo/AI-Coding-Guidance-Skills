@@ -277,6 +277,30 @@ class EvolutionEngine:
         except (ValueError, KeyError):
             return False
 
+    def revert_if_worse(self, change_id: str, metrics_before: dict, metrics_after: dict, threshold: float = 0.1) -> bool:
+        """Revert a change if metrics have degraded beyond threshold.
+
+        Compares success_rate before and after. If it dropped by more than
+        threshold, automatically rolls back the change.
+
+        Args:
+            change_id: The ID of the change to potentially revert.
+            metrics_before: Node metrics dict before the change (from EvolutionMetrics.get_node_metrics).
+            metrics_after: Node metrics dict after the change.
+            threshold: Maximum acceptable drop in success_rate (default 0.1 = 10%).
+
+        Returns:
+            True if the change was reverted, False if it's acceptable.
+        """
+        before_rate = metrics_before.get("success_rate", 0.0)
+        after_rate = metrics_after.get("success_rate", 0.0)
+
+        if before_rate - after_rate > threshold:
+            # Performance degraded, rollback
+            self.rollback(change_id)
+            return True
+        return False
+
     def _log_change(self, change: dict) -> None:
         """Append a change record to history.jsonl.
 

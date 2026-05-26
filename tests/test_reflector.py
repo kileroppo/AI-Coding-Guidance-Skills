@@ -164,3 +164,65 @@ class TestSummarizeProgress:
         }
         summary = r.summarize_progress(state)
         assert "Second error" in summary
+
+
+class TestFailureCategorization:
+    """Tests for failure categorization."""
+
+    def test_categorize_timeout(self, reflector_setup) -> None:
+        """Test that timeout errors are categorized correctly."""
+        r = reflector_setup
+        assert r.categorize_failure(["Request timed out"], "") == "timeout"
+        assert r.categorize_failure(["timeout exceeded"], "") == "timeout"
+
+    def test_categorize_test_failure(self, reflector_setup) -> None:
+        """Test that test failures are categorized correctly."""
+        r = reflector_setup
+        assert r.categorize_failure(["test suite failed with error"], "") == "test_failure"
+        assert r.categorize_failure(["Test execution error"], "") == "test_failure"
+
+    def test_categorize_code_error(self, reflector_setup) -> None:
+        """Test that code errors are categorized correctly."""
+        r = reflector_setup
+        assert r.categorize_failure(["SyntaxError: invalid syntax"], "") == "code_error"
+        assert r.categorize_failure(["TypeError: expected int"], "") == "code_error"
+        assert r.categorize_failure(["NameError: undefined"], "") == "code_error"
+
+    def test_categorize_dependency(self, reflector_setup) -> None:
+        """Test that dependency issues are categorized correctly."""
+        r = reflector_setup
+        assert r.categorize_failure(["ImportError: no module"], "") == "dependency_issue"
+        assert r.categorize_failure(["dependency not installed"], "") == "dependency_issue"
+        assert r.categorize_failure(["module not found"], "") == "dependency_issue"
+
+    def test_categorize_unknown(self, reflector_setup) -> None:
+        """Test that unrecognizable errors return unknown."""
+        r = reflector_setup
+        assert r.categorize_failure(["something happened"], "") == "unknown"
+        assert r.categorize_failure([], "") == "unknown"
+
+    def test_propose_evolution_has_confidence(self, reflector_setup) -> None:
+        """Test that proposals include confidence_score."""
+        r = reflector_setup
+        reflections = [
+            {"node": "code", "success": False, "learnings": [], "issues": ["error occurred"]},
+            {"node": "code", "success": False, "learnings": [], "issues": ["error occurred"]},
+            {"node": "code", "success": False, "learnings": [], "issues": ["error occurred"]},
+        ]
+        proposals = r.propose_evolution(reflections)
+        assert len(proposals) >= 1
+        assert "confidence_score" in proposals[0]
+        assert 0.0 <= proposals[0]["confidence_score"] <= 1.0
+
+    def test_propose_evolution_has_failure_category(self, reflector_setup) -> None:
+        """Test that proposals include failure_category."""
+        r = reflector_setup
+        reflections = [
+            {"node": "code", "success": False, "learnings": [], "issues": ["timeout error"]},
+            {"node": "code", "success": False, "learnings": [], "issues": ["timeout exceeded"]},
+            {"node": "code", "success": False, "learnings": [], "issues": ["timed out"]},
+        ]
+        proposals = r.propose_evolution(reflections)
+        assert len(proposals) >= 1
+        assert "failure_category" in proposals[0]
+        assert proposals[0]["failure_category"] == "timeout"
