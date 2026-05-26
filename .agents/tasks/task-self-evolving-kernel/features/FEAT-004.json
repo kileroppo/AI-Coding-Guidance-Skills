@@ -2,7 +2,7 @@
   "id": "FEAT-004",
   "type": "feat",
   "description": "Write comprehensive tests achieving 90%+ coverage for all kernel modules: runner, graph_executor, state_manager, knowledge store, skill_composer, evolution engine, and reflector. Tests should exercise real logic paths, edge cases, error handling, and the self-evolution constraints.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Create tests/conftest.py with shared fixtures: tmp_dir for isolated test state, sample graph.yaml fixture, sample state.yaml fixture, sample skills directory with mock SKILL.md files, sample knowledge directory structure.",
     "Create tests/test_runner.py: Test runner.py main() with --dry-run mode, test --goal flag sets current_goal.md, test --max-iterations is respected, test runner exits when max iterations reached, test runner handles missing state.yaml gracefully (creates default), test runner handles invalid graph.yaml with clear error.",
