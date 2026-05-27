@@ -6,23 +6,73 @@ SSE log streaming, and WebSocket state broadcasts.
 
 import asyncio
 import json
+import re
+import time
 import threading
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 import yaml
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 KERNEL_ROOT = Path(__file__).resolve().parent.parent
 
 
-def create_app(kernel_root: Path | None = None) -> FastAPI:
+def _validate_path(path: Path, root: Path) -> bool:
+    """Validate that a path does not escape the root directory.
+
+    Args:
+        path: The path to validate (will be resolved).
+        root: The root directory boundary.
+
+    Returns:
+        True if path is within root, False otherwise.
+    """
+    try:
+        resolved = path.resolve()
+        root_resolved = root.resolve()
+        return str(resolved).startswith(str(root_resolved))
+    except (OSError, ValueError):
+        return False
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Simple in-memory rate limiter using a sliding window."""
+
+    def __init__(self, app, max_requests: int = 60, window_seconds: int = 60):
+        super().__init__(app)
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.requests: dict[str, list[float]] = defaultdict(list)
+
+    async def dispatch(self, request, call_next):
+        client_ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        # Clean old entries
+        self.requests[client_ip] = [
+            t for t in self.requests[client_ip] if now - t < self.window_seconds
+        ]
+        if len(self.requests[client_ip]) >= self.max_requests:
+            return JSONResponse(
+                status_code=429,
+                content={"error": "Rate limit exceeded"},
+            )
+        self.requests[client_ip].append(now)
+        return await call_next(request)
+
+
+def create_app(kernel_root: Path | None = None, rate_limit: int = 60) -> FastAPI:
     """Create and configure the FastAPI application.
 
     Args:
         kernel_root: Path to the project root. Defaults to parent of web/.
+        rate_limit: Maximum requests per minute per IP. Defaults to 60.
 
     Returns:
         Configured FastAPI app instance.
@@ -33,6 +83,18 @@ def create_app(kernel_root: Path | None = None) -> FastAPI:
     kernel_root = Path(kernel_root)
 
     app = FastAPI(title="AI Kernel Dashboard")
+
+    # CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Rate limiting middleware
+    app.add_middleware(RateLimitMiddleware, max_requests=rate_limit, window_seconds=60)
 
     # Shared state for execution control
     app.state.kernel_root = kernel_root
@@ -127,18 +189,117 @@ def create_app(kernel_root: Path | None = None) -> FastAPI:
             return data.get("items", [])
         return []
 
+    @app.get("/api/metrics")
+    async def get_metrics():
+        """Return aggregated system metrics."""
+        reflections_path = kernel_root / "memory" / "reflections.jsonl"
+        history_path = kernel_root / "kernel" / "evolution" / "history.jsonl"
+        metrics_path = kernel_root / "skills" / "_metrics.yaml"
+
+        reflections = _read_jsonl(reflections_path)
+        history = _read_jsonl(history_path)
+
+        # Compute per_node_success_rates and iteration_distribution
+        node_counts: dict[str, int] = defaultdict(int)
+        node_successes: dict[str, int] = defaultdict(int)
+        for r in reflections:
+            node = r.get("node", "unknown")
+            node_counts[node] += 1
+            if r.get("success", False):
+                node_successes[node] += 1
+
+        per_node_success_rates = {}
+        for node, count in node_counts.items():
+            per_node_success_rates[node] = node_successes[node] / count if count > 0 else 0.0
+
+        iteration_distribution = dict(node_counts)
+
+        # Compute overall_health from per_node rates (weighted by count)
+        total_weight = sum(node_counts.values())
+        if total_weight > 0:
+            overall_health = sum(
+                per_node_success_rates[n] * node_counts[n] for n in node_counts
+            ) / total_weight
+        else:
+            overall_health = 1.0
+
+        # Compute evolution_velocity: total changes / max(1, total_iterations / 10)
+        total_changes = len(history)
+        total_iterations = len(reflections)
+        evolution_velocity = total_changes / max(1, total_iterations / 10)
+
+        # Read skill usage from _metrics.yaml
+        skill_usage_frequency: dict[str, int] = {}
+        metrics_data = _read_yaml(metrics_path)
+        if isinstance(metrics_data, dict):
+            for skill_name, skill_info in metrics_data.items():
+                if isinstance(skill_info, dict):
+                    skill_usage_frequency[skill_name] = skill_info.get("times_used", 0)
+
+        return {
+            "overall_health": round(overall_health, 4),
+            "per_node_success_rates": per_node_success_rates,
+            "evolution_velocity": round(evolution_velocity, 4),
+            "iteration_distribution": iteration_distribution,
+            "skill_usage_frequency": skill_usage_frequency,
+        }
+
+    @app.get("/api/metrics/history")
+    async def get_metrics_history():
+        """Return time-series data for charts."""
+        reflections_path = kernel_root / "memory" / "reflections.jsonl"
+        reflections = _read_jsonl(reflections_path)
+
+        # Bucket reflections into windows of 10 iterations
+        window_size = 10
+        success_rate_over_time = []
+        for i in range(0, len(reflections), window_size):
+            window = reflections[i : i + window_size]
+            successes = sum(1 for r in window if r.get("success", False))
+            rate = successes / len(window) if window else 0.0
+            success_rate_over_time.append({
+                "window": i // window_size,
+                "rate": round(rate, 4),
+            })
+
+        # Node activity counts
+        node_counts: dict[str, int] = defaultdict(int)
+        for r in reflections:
+            node = r.get("node", "unknown")
+            node_counts[node] += 1
+
+        node_activity = [{"node": n, "count": c} for n, c in node_counts.items()]
+
+        return {
+            "success_rate_over_time": success_rate_over_time,
+            "node_activity": node_activity,
+        }
+
     @app.post("/api/goal")
     async def set_goal(request: GoalRequest):
         """Set a new goal - writes to state and memory/current_goal.md."""
-        if not request.goal.strip():
-            return {"error": "Goal cannot be empty"}
+        # Input sanitization: strip HTML tags
+        goal = re.sub(r"<[^>]+>", "", request.goal)
+        goal = goal.strip()
+
+        if not goal:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Goal cannot be empty"},
+            )
+
+        if len(goal) > 500:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Goal must be 500 characters or fewer"},
+            )
 
         # Update state.yaml
         state_path = kernel_root / "kernel" / "state.yaml"
         state_data = _read_yaml(state_path)
         if not isinstance(state_data, dict):
             state_data = {}
-        state_data["goal"] = request.goal.strip()
+        state_data["goal"] = goal
 
         state_path.parent.mkdir(parents=True, exist_ok=True)
         with open(state_path, "w", encoding="utf-8") as f:
@@ -149,12 +310,12 @@ def create_app(kernel_root: Path | None = None) -> FastAPI:
         memory_dir.mkdir(parents=True, exist_ok=True)
         goal_path = memory_dir / "current_goal.md"
         with open(goal_path, "w", encoding="utf-8") as f:
-            f.write(f"# Current Goal\n\n{request.goal.strip()}\n")
+            f.write(f"# Current Goal\n\n{goal}\n")
 
         # Broadcast via WebSocket
-        await _broadcast_ws({"type": "goal_updated", "goal": request.goal.strip()})
+        await _broadcast_ws({"type": "goal_updated", "goal": goal})
 
-        return {"status": "ok", "goal": request.goal.strip()}
+        return {"status": "ok", "goal": goal}
 
     @app.post("/api/start")
     async def start_execution(request: StartRequest):
