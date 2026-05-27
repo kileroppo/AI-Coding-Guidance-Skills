@@ -299,7 +299,9 @@ class TestMode3:
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
         mock_result = MagicMock()
+        mock_result.returncode = 0
         mock_result.stdout = "Some output\nTRANSITION: goal_loaded\nMore output"
+        mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
             state = runner.main([
@@ -319,7 +321,9 @@ class TestMode3:
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
         mock_result = MagicMock()
+        mock_result.returncode = 0
         mock_result.stdout = "Some output without transition info"
+        mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result):
             state = runner.main([
@@ -338,7 +342,9 @@ class TestMode3:
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
         mock_result = MagicMock()
+        mock_result.returncode = 0
         mock_result.stdout = "TRANSITION: nonexistent_condition"
+        mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result):
             state = runner.main([
@@ -398,6 +404,8 @@ class TestMode3:
         def mock_run(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
+            result.returncode = 0
+            result.stderr = ""
             if call_count[0] == 1:
                 result.stdout = "TRANSITION: goal_loaded"
             elif call_count[0] == 2:
@@ -428,7 +436,9 @@ class TestMode3:
         def mock_run(*args, **kwargs):
             captured_input.append(kwargs.get("input", ""))
             result = MagicMock()
+            result.returncode = 0
             result.stdout = "TRANSITION: goal_loaded"
+            result.stderr = ""
             return result
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -873,3 +883,219 @@ class TestStuckDetection:
         assert "STUCK" in captured.out
         assert "exceeded max_retries" in captured.out
         assert state["status"] == "stuck"
+
+
+class TestReviewFixes:
+    """Tests for review findings fixes: shlex, fallback warning, resume reset, returncode."""
+
+    @pytest.fixture
+    def runner_env(self, tmp_path: Path) -> Path:
+        """Set up a complete runner environment in tmp_path."""
+        kernel_dir = tmp_path / "kernel"
+        kernel_dir.mkdir()
+
+        state_data = {
+            "current_node": "init",
+            "iteration_count": 0,
+            "max_iterations": 30,
+            "goal": "",
+            "status": "idle",
+            "last_updated": "",
+            "errors": [],
+            "context": {"skills_loaded": [], "current_task": "", "phase": "startup"},
+            "node_visits": {},
+        }
+        with open(kernel_dir / "state.yaml", "w") as f:
+            yaml.safe_dump(state_data, f)
+
+        graph_data = {
+            "nodes": [
+                {
+                    "id": "init",
+                    "prompt_file": "prompts/orchestrator.md",
+                    "description": "Initialize",
+                    "transitions": [{"to": "plan", "condition": "goal_loaded"}],
+                    "max_retries": 10,
+                },
+                {
+                    "id": "plan",
+                    "prompt_file": "prompts/planner.md",
+                    "description": "Plan tasks",
+                    "transitions": [{"to": "code", "condition": "plan_ready"}],
+                    "max_retries": 10,
+                },
+                {
+                    "id": "code",
+                    "prompt_file": "prompts/coder.md",
+                    "description": "Write code",
+                    "transitions": [],
+                    "max_retries": 10,
+                },
+            ],
+            "default_start": "init",
+            "max_iterations": 30,
+        }
+        with open(kernel_dir / "graph.yaml", "w") as f:
+            yaml.safe_dump(graph_data, f)
+
+        (kernel_dir / "prompts").mkdir()
+        (kernel_dir / "prompts" / "orchestrator.md").write_text("Orchestrator prompt")
+        (kernel_dir / "prompts" / "planner.md").write_text("Planner prompt")
+        (kernel_dir / "prompts" / "coder.md").write_text("Coder prompt")
+        (kernel_dir / "BOOT.md").write_text("# Boot\nBoot content.")
+        (kernel_dir / "constitution.md").write_text("# Constitution\nImmutable rules.")
+        (kernel_dir / "philosophy").mkdir()
+        (kernel_dir / "philosophy" / "dao.md").write_text("# Dao\nDao content.")
+        (kernel_dir / "philosophy" / "strategy.md").write_text("# Strategy\nStrategy content.")
+
+        memory_dir = tmp_path / "memory"
+        memory_dir.mkdir()
+        (memory_dir / "decisions.jsonl").touch()
+        (memory_dir / "reflections.jsonl").touch()
+        (memory_dir / "current_goal.md").touch()
+        with open(memory_dir / "progress.yaml", "w") as f:
+            yaml.safe_dump({"iteration": 0, "tasks_total": 0, "tasks_done": 0, "status": "pending"}, f)
+
+        knowledge_dir = tmp_path / "knowledge"
+        knowledge_dir.mkdir()
+        for sub in ["rules", "skills", "patterns"]:
+            (knowledge_dir / sub).mkdir()
+            with open(knowledge_dir / sub / "_index.yaml", "w") as f:
+                yaml.safe_dump({"items": []}, f)
+
+        return tmp_path
+
+    def test_shlex_parsing_with_quoted_args(self, runner_env: Path, monkeypatch) -> None:
+        """Test that AI command with quoted arguments is split correctly using shlex."""
+        from unittest.mock import patch, MagicMock
+
+        monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
+
+        captured_args = []
+
+        def mock_run(cmd, **kwargs):
+            captured_args.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "TRANSITION: goal_loaded"
+            result.stderr = ""
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            runner.main([
+                "--goal", "test shlex",
+                "--ai-command", 'claude --print --model "claude-3"',
+                "--max-iterations", "1",
+            ])
+
+        assert len(captured_args) == 1
+        # shlex.split should produce: ['claude', '--print', '--model', 'claude-3']
+        assert captured_args[0] == ["claude", "--print", "--model", "claude-3"]
+
+    def test_fallback_produces_warning_no_transition(self, runner_env: Path, monkeypatch, capsys) -> None:
+        """Test that fallback when no TRANSITION line produces a warning message."""
+        from unittest.mock import patch, MagicMock
+
+        monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Some output without any transition info"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result):
+            state = runner.main([
+                "--goal", "test fallback warning",
+                "--ai-command", "echo hi",
+                "--max-iterations", "1",
+            ])
+
+        captured = capsys.readouterr()
+        assert "[WARNING] No TRANSITION line found in AI output" in captured.err
+        assert "falling back to first transition: plan" in captured.err
+        # Also verify error is recorded in state
+        assert any("No TRANSITION line" in e for e in state.get("errors", []))
+
+    def test_fallback_produces_warning_unmatched_condition(self, runner_env: Path, monkeypatch, capsys) -> None:
+        """Test that fallback when condition doesn't match produces a warning."""
+        from unittest.mock import patch, MagicMock
+
+        monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "TRANSITION: nonexistent_condition"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result):
+            runner.main([
+                "--goal", "test unmatched warning",
+                "--ai-command", "echo hi",
+                "--max-iterations", "1",
+            ])
+
+        captured = capsys.readouterr()
+        assert "[WARNING] TRANSITION condition 'nonexistent_condition'" in captured.err
+        assert "falling back to first transition: plan" in captured.err
+
+    def test_resume_resets_node_visits(self, runner_env: Path, monkeypatch) -> None:
+        """Test that --resume resets node_visits to empty dict."""
+        monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
+
+        # Set up state with stale node_visits
+        state_file = runner_env / "kernel" / "state.yaml"
+        state_data = {
+            "current_node": "plan",
+            "iteration_count": 5,
+            "max_iterations": 30,
+            "goal": "existing goal",
+            "status": "running",
+            "last_updated": "",
+            "errors": [],
+            "context": {"skills_loaded": [], "current_task": "", "phase": "coding"},
+            "node_visits": {"init": 3, "plan": 4},
+        }
+        with open(state_file, "w") as f:
+            yaml.safe_dump(state_data, f)
+
+        state = runner.main([
+            "--goal", "resume goal",
+            "--resume",
+            "--dry-run",
+            "--max-iterations", "1",
+        ])
+
+        # node_visits should have been reset at the start of resume
+        # Only new visits from this session should be counted
+        # Since we ran 1 iteration starting from "plan", we should see
+        # only 1 visit to whatever the next node was
+        assert "init" not in state.get("node_visits", {}) or state["node_visits"].get("init", 0) == 0
+        # Previous stale counts of 3 and 4 should not persist
+        assert state.get("node_visits", {}).get("plan", 0) < 4
+
+    def test_nonzero_returncode_handling(self, runner_env: Path, monkeypatch, capsys) -> None:
+        """Test that non-zero returncode from AI command is handled as error."""
+        from unittest.mock import patch, MagicMock
+
+        monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = "TRANSITION: goal_loaded"
+        mock_result.stderr = "Error: API rate limited"
+
+        with patch("subprocess.run", return_value=mock_result):
+            state = runner.main([
+                "--goal", "test returncode",
+                "--ai-command", "claude --print",
+                "--max-iterations", "2",
+            ])
+
+        captured = capsys.readouterr()
+        # Should log error to stderr
+        assert "[ERROR] AI command exited with code 1" in captured.err
+        assert "API rate limited" in captured.err
+        # Should record error in state
+        assert any("exited with code 1" in e for e in state.get("errors", []))
+        # Should NOT have advanced the node (stdout should not be parsed)
+        assert state["current_node"] == "init"

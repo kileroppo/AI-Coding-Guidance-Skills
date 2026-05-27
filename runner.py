@@ -25,6 +25,7 @@ Mode 3 (Real AI execution via subprocess): The runner assembles context from
 """
 
 import argparse
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -140,6 +141,10 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         else:
             state_mgr.set_goal(args.goal)
 
+    # Reset node_visits on resume so stale counts don't trigger false stuck detection
+    if args.resume:
+        state_mgr.state["node_visits"] = {}
+
     state_mgr.state["max_iterations"] = args.max_iterations
     state_mgr.state["status"] = "running"
 
@@ -204,12 +209,23 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             context_prompt = assembler.assemble(state, node, graph, knowledge)
             try:
                 result = subprocess.run(
-                    args.ai_command.split(),
+                    shlex.split(args.ai_command),
                     input=context_prompt,
                     capture_output=True,
                     text=True,
                     timeout=args.timeout,
                 )
+                if result.returncode != 0:
+                    print(
+                        f"[ERROR] AI command exited with code {result.returncode}: "
+                        f"{result.stderr.strip()}",
+                        file=sys.stderr,
+                    )
+                    state_mgr.state.setdefault("errors", []).append(
+                        f"AI command exited with code {result.returncode} on node {node['id']}"
+                    )
+                    # Do not parse stdout for transitions on failure
+                    continue
                 ai_output = result.stdout
                 transition_condition = _parse_transition(ai_output)
             except subprocess.TimeoutExpired:
@@ -220,13 +236,13 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                 continue
             except FileNotFoundError:
                 print(
-                    f"Error: AI command not found: '{args.ai_command.split()[0]}'. "
+                    f"Error: AI command not found: '{shlex.split(args.ai_command)[0]}'. "
                     f"Please verify the command is installed and in your PATH.",
                     file=sys.stderr,
                 )
                 state_mgr.state["status"] = "error"
                 state_mgr.state.setdefault("errors", []).append(
-                    f"Command not found: {args.ai_command.split()[0]}"
+                    f"Command not found: {shlex.split(args.ai_command)[0]}"
                 )
                 break
 
@@ -244,9 +260,24 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     if not matched:
                         # Fallback to first transition
                         next_node_id = transitions[0]["to"]
+                        print(
+                            f"[WARNING] TRANSITION condition '{transition_condition}' "
+                            f"does not match any available transition, "
+                            f"falling back to first transition: {next_node_id}",
+                            file=sys.stderr,
+                        )
                 else:
                     # No TRANSITION line - fallback to first transition
                     next_node_id = transitions[0]["to"]
+                    print(
+                        f"[WARNING] No TRANSITION line found in AI output, "
+                        f"falling back to first transition: {next_node_id}",
+                        file=sys.stderr,
+                    )
+                    state_mgr.state.setdefault("errors", []).append(
+                        f"No TRANSITION line in AI output on node {node['id']}, "
+                        f"fell back to: {next_node_id}"
+                    )
                 state_mgr.set_current_node(next_node_id)
 
                 # Track visit and check stuck

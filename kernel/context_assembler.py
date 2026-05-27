@@ -41,7 +41,13 @@ class ContextAssembler:
         boot_content = self._read_file(boot_path)
         sections.append(f"=== BOOT SEQUENCE ===\n\n{boot_content}")
 
-        # 2. Current state summary
+        # 2. Constitution
+        const_path = self.kernel_root / "kernel" / "constitution.md"
+        const_content = self._read_file(const_path)
+        if const_content and not const_content.startswith("(file not found"):
+            sections.append(f"=== CONSTITUTION (IMMUTABLE) ===\n\n{const_content}")
+
+        # 3. Current state summary
         state_summary = self._format_state(state)
         sections.append(f"=== CURRENT STATE ===\n\n{state_summary}")
 
