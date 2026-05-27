@@ -2,7 +2,7 @@
   "id": "FEAT-004",
   "type": "feat",
   "description": "Web UI Metrics Dashboard + Real-time Charts + Security Hardening. Add Chart.js visualizations for success rates, iteration distribution, evolution velocity. Add CORS, rate limiting, input sanitization, and workspace sandboxing to the web API.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Add GET /api/metrics endpoint to web/app.py that returns: overall_health (from EvolutionMetrics), per_node_success_rates, evolution_velocity (changes per 10 iterations from history.jsonl), iteration_distribution (count per node from reflections.jsonl), skill_usage_frequency (from skills/_metrics.yaml if exists)",
     "Add GET /api/metrics/history endpoint that returns time-series data for charting: success_rate_over_time (bucketed by 10-iteration windows from reflections.jsonl)",
@@ -28,5 +28,5 @@
     "python -m pytest tests/ --cov --cov-fail-under=90 -q"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 49 web tests pass (18 new). Full suite: 995 tests, 98.48% coverage. Changed set_goal to return 400 status for empty/too-long goals (was 200 with error in body). Rate limiting is configurable via rate_limit param in create_app(). CORS allows localhost:8000 and 127.0.0.1:8000 by default."
 }
