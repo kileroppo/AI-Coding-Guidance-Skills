@@ -56,6 +56,9 @@ task and expected output format for this iteration.
 Perform the task described in your role prompt. Use the context from memory/
 (current_goal.md, plan.md, progress.yaml) to inform your work.
 
+Your output MUST include a `TRANSITION: <condition>` line. See
+`kernel/contracts/output_format.md` for the full output format specification.
+
 ### Step 7: Update and Advance
 After completing your task:
 1. Update `memory/progress.yaml` with progress

@@ -33,6 +33,7 @@ from typing import Any
 
 from kernel.bootstrap import BootstrapGenerator
 from kernel.context_assembler import ContextAssembler
+from kernel.contracts import OutputContractValidator
 from kernel.graph_executor import GraphExecutor
 from knowledge.store import KnowledgeStore
 from memory.state_manager import StateManager
@@ -166,6 +167,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
 
     if mode3:
         assembler = ContextAssembler(KERNEL_ROOT)
+        validator = OutputContractValidator(
+            str(KERNEL_ROOT / "kernel" / "graph.yaml")
+        )
 
     # Build max_retries_map from graph nodes
     max_retries_map = {
@@ -245,6 +249,21 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     f"Command not found: {shlex.split(args.ai_command)[0]}"
                 )
                 break
+
+            # Validate output against contract
+            contract_result = validator.validate_output(ai_output, node["id"])
+            if not contract_result.valid:
+                for violation in contract_result.violations:
+                    print(
+                        f"[CONTRACT VIOLATION] {violation}",
+                        file=sys.stderr,
+                    )
+                state_mgr.state.setdefault("errors", []).append(
+                    f"Contract violations on node {node['id']}: "
+                    f"{contract_result.violations}"
+                )
+                # Stay on same node - do not advance
+                continue
 
             # Determine next node
             transitions = graph.get_available_transitions(node["id"])

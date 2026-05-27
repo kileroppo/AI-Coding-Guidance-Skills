@@ -32,6 +32,18 @@ execution cycle.
 - **goal_loaded**: A valid goal exists and context is initialized. Transition to `plan`.
 - If no goal exists, update state with an error and halt.
 
+## Output Format Contract
+
+Your output MUST conform to `kernel/contracts/output_format.md`. Include these lines:
+
+```
+STATUS: success
+TRANSITION: goal_loaded
+```
+
+Valid TRANSITION values for this node:
+- `goal_loaded` - A valid goal exists and context is initialized.
+
 ## Output
 
 Update `kernel/state.yaml` with:

@@ -31,6 +31,19 @@ implementation is correct and complete. You are the quality gate.
 - **tests_pass**: All tests pass and coverage >= 90%. Transition to `review`.
 - **tests_fail**: Tests fail or coverage is below threshold. Transition back to `code`.
 
+## Output Format Contract
+
+Your output MUST conform to `kernel/contracts/output_format.md`. Include these lines:
+
+```
+STATUS: success
+TRANSITION: tests_pass
+```
+
+Valid TRANSITION values for this node:
+- `tests_pass` - All tests pass and coverage >= 90%.
+- `tests_fail` - Tests fail or coverage is below threshold.
+
 ## Output
 
 - Update `memory/progress.yaml` with test results

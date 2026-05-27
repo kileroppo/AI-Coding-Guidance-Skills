@@ -34,6 +34,20 @@ plan. You turn ambiguity into clarity and goals into steps.
 - **plan_ready**: A valid plan exists with at least one actionable task. Transition to `code`.
 - **plan_needs_revision**: The plan has issues (circular dependencies, unclear tasks). Loop back to `plan`.
 
+## Output Format Contract
+
+Your output MUST conform to `kernel/contracts/output_format.md`. Include these lines:
+
+```
+FILES_WRITTEN: memory/plan.md, memory/progress.yaml
+STATUS: success
+TRANSITION: plan_ready
+```
+
+Valid TRANSITION values for this node:
+- `plan_ready` - A valid plan exists with at least one actionable task.
+- `plan_needs_revision` - The plan has issues that require another pass.
+
 ## Output
 
 Update `memory/plan.md` with the complete plan.

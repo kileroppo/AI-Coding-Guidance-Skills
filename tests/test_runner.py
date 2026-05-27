@@ -300,7 +300,7 @@ class TestMode3:
 
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "Some output\nTRANSITION: goal_loaded\nMore output"
+        mock_result.stdout = "Some output\nSTATUS: success\nTRANSITION: goal_loaded\nMore output"
         mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -315,14 +315,14 @@ class TestMode3:
         assert state["current_node"] == "plan"
 
     def test_mode3_fallback_first_transition(self, runner_env: Path, monkeypatch) -> None:
-        """Test Mode 3 uses first transition when no TRANSITION line found."""
+        """Test Mode 3 stays on same node when no TRANSITION line found (contract violation)."""
         from unittest.mock import patch, MagicMock
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "Some output without transition info"
+        mock_result.stdout = "Some output without transition info\nSTATUS: success"
         mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result):
@@ -332,18 +332,18 @@ class TestMode3:
                 "--max-iterations", "1",
             ])
 
-        # Should still advance using first available transition
-        assert state["current_node"] == "plan"
+        # Contract validation fails (missing TRANSITION), stays on same node
+        assert state["current_node"] == "init"
 
     def test_mode3_unmatched_transition_falls_back(self, runner_env: Path, monkeypatch) -> None:
-        """Test Mode 3 falls back to first transition when condition doesn't match."""
+        """Test Mode 3 stays on node when transition condition is invalid (contract violation)."""
         from unittest.mock import patch, MagicMock
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "TRANSITION: nonexistent_condition"
+        mock_result.stdout = "STATUS: success\nTRANSITION: nonexistent_condition"
         mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result):
@@ -353,8 +353,8 @@ class TestMode3:
                 "--max-iterations", "1",
             ])
 
-        # Should fall back to first transition
-        assert state["current_node"] == "plan"
+        # Contract validation fails (invalid transition for init), stays on same node
+        assert state["current_node"] == "init"
 
     def test_mode3_timeout_handling(self, runner_env: Path, monkeypatch) -> None:
         """Test Mode 3 handles subprocess timeout correctly."""
@@ -407,11 +407,11 @@ class TestMode3:
             result.returncode = 0
             result.stderr = ""
             if call_count[0] == 1:
-                result.stdout = "TRANSITION: goal_loaded"
+                result.stdout = "STATUS: success\nTRANSITION: goal_loaded"
             elif call_count[0] == 2:
-                result.stdout = "TRANSITION: plan_ready"
+                result.stdout = "STATUS: success\nTRANSITION: plan_ready"
             else:
-                result.stdout = "done"
+                result.stdout = "STATUS: success\nTRANSITION: done"
             return result
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -437,7 +437,7 @@ class TestMode3:
             captured_input.append(kwargs.get("input", ""))
             result = MagicMock()
             result.returncode = 0
-            result.stdout = "TRANSITION: goal_loaded"
+            result.stdout = "STATUS: success\nTRANSITION: goal_loaded"
             result.stderr = ""
             return result
 
@@ -977,7 +977,7 @@ class TestReviewFixes:
             captured_args.append(cmd)
             result = MagicMock()
             result.returncode = 0
-            result.stdout = "TRANSITION: goal_loaded"
+            result.stdout = "STATUS: success\nTRANSITION: goal_loaded"
             result.stderr = ""
             return result
 
@@ -993,14 +993,14 @@ class TestReviewFixes:
         assert captured_args[0] == ["claude", "--print", "--model", "claude-3"]
 
     def test_fallback_produces_warning_no_transition(self, runner_env: Path, monkeypatch, capsys) -> None:
-        """Test that fallback when no TRANSITION line produces a warning message."""
+        """Test that missing TRANSITION line triggers contract violation."""
         from unittest.mock import patch, MagicMock
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "Some output without any transition info"
+        mock_result.stdout = "Some output without any transition info\nSTATUS: success"
         mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result):
@@ -1011,20 +1011,19 @@ class TestReviewFixes:
             ])
 
         captured = capsys.readouterr()
-        assert "[WARNING] No TRANSITION line found in AI output" in captured.err
-        assert "falling back to first transition: plan" in captured.err
-        # Also verify error is recorded in state
-        assert any("No TRANSITION line" in e for e in state.get("errors", []))
+        assert "[CONTRACT VIOLATION] Missing required TRANSITION line" in captured.err
+        # Contract violation stays on same node and records error
+        assert any("Contract violations" in str(e) for e in state.get("errors", []))
 
     def test_fallback_produces_warning_unmatched_condition(self, runner_env: Path, monkeypatch, capsys) -> None:
-        """Test that fallback when condition doesn't match produces a warning."""
+        """Test that invalid transition condition triggers contract violation."""
         from unittest.mock import patch, MagicMock
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "TRANSITION: nonexistent_condition"
+        mock_result.stdout = "STATUS: success\nTRANSITION: nonexistent_condition"
         mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result):
@@ -1035,8 +1034,8 @@ class TestReviewFixes:
             ])
 
         captured = capsys.readouterr()
-        assert "[WARNING] TRANSITION condition 'nonexistent_condition'" in captured.err
-        assert "falling back to first transition: plan" in captured.err
+        assert "[CONTRACT VIOLATION]" in captured.err
+        assert "nonexistent_condition" in captured.err
 
     def test_resume_resets_node_visits(self, runner_env: Path, monkeypatch) -> None:
         """Test that --resume resets node_visits to empty dict."""

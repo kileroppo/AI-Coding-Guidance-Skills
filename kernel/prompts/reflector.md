@@ -39,6 +39,20 @@ You are the kernel's self-awareness.
 - **evolution_proposed**: A specific, validated evolution is proposed. Transition to `evolve`.
 - **no_evolution_needed**: No changes to the kernel are needed. Transition to `plan` for next task.
 
+## Output Format Contract
+
+Your output MUST conform to `kernel/contracts/output_format.md`. Include these lines:
+
+```
+FILES_WRITTEN: memory/reflections.jsonl
+STATUS: success
+TRANSITION: no_evolution_needed
+```
+
+Valid TRANSITION values for this node:
+- `evolution_proposed` - A specific, validated evolution is proposed.
+- `no_evolution_needed` - No changes to the kernel are needed.
+
 ## Output
 
 - Append learnings to `memory/reflections.jsonl`

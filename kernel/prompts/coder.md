@@ -34,6 +34,20 @@ You are the hands of the kernel - turning plans into reality.
 - **code_written**: Implementation is complete and tests are written. Transition to `test`.
 - **code_needs_retry**: Implementation hit a blocker. Loop back to `code` with updated context.
 
+## Output Format Contract
+
+Your output MUST conform to `kernel/contracts/output_format.md`. Include these lines:
+
+```
+FILES_WRITTEN: src/module.py, tests/test_module.py
+STATUS: success
+TRANSITION: code_written
+```
+
+Valid TRANSITION values for this node:
+- `code_written` - Implementation is complete and tests are written.
+- `code_needs_retry` - Implementation hit a blocker, need another attempt.
+
 ## Output
 
 - New/modified source files

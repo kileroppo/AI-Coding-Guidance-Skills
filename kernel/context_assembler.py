@@ -76,6 +76,14 @@ class ContextAssembler:
             skills_section = self._load_skills(skills_loaded, knowledge_store)
             sections.append(f"=== LOADED SKILLS ===\n\n{skills_section}")
 
+        # 7. Output format contract
+        contract_path = self.kernel_root / "kernel" / "contracts" / "output_format.md"
+        contract_content = self._read_file(contract_path)
+        if not contract_content.startswith("(file not found"):
+            sections.append(
+                f"=== OUTPUT FORMAT CONTRACT ===\n\n{contract_content}"
+            )
+
         return "\n\n".join(sections)
 
     def _read_file(self, path: Path) -> str:
