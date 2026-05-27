@@ -1,0 +1,129 @@
+"""Feedback loop that ties the reflector to the evolution engine.
+
+After each cycle, reads real iteration data, calls the reflector,
+and auto-applies confident proposals via the evolution engine.
+"""
+
+import json
+from pathlib import Path
+from typing import Any
+
+from kernel.evolution.engine import EvolutionEngine
+from kernel.evolution.metrics import EvolutionMetrics
+from kernel.reflector import Reflector
+
+
+class FeedbackLoop:
+    """Connects iteration analysis to automatic kernel evolution.
+
+    After each execution cycle, the feedback loop:
+    1. Analyzes the iteration via the reflector
+    2. Records the reflection
+    3. Reads recent reflections for pattern detection
+    4. Generates evolution proposals
+    5. Auto-applies proposals with confidence above threshold
+    6. Records metrics for tracking
+    """
+
+    def __init__(
+        self,
+        memory_dir: str,
+        reflector: Reflector,
+        evolution_engine: EvolutionEngine,
+        metrics: EvolutionMetrics,
+    ) -> None:
+        """Initialize the feedback loop.
+
+        Args:
+            memory_dir: Path to the memory/ directory.
+            reflector: Reflector instance for iteration analysis.
+            evolution_engine: EvolutionEngine for applying changes.
+            metrics: EvolutionMetrics for tracking performance.
+        """
+        self.memory_dir = Path(memory_dir)
+        self.reflector = reflector
+        self.evolution_engine = evolution_engine
+        self.metrics = metrics
+        self.threshold = 0.7
+
+    def run_cycle(self, iteration_data: dict) -> dict:
+        """Run a full feedback cycle after an iteration.
+
+        1. Analyze iteration via reflector
+        2. Record the reflection
+        3. Read recent reflections (last 10)
+        4. Generate evolution proposals
+        5. Apply proposals with confidence > threshold
+        6. Record metrics
+
+        Args:
+            iteration_data: Dict with keys: node, result, errors, iteration.
+
+        Returns:
+            Dict with: reflection, proposals_generated, proposals_applied,
+            proposals_skipped.
+        """
+        # 1. Analyze iteration
+        reflection = self.reflector.analyze_iteration(iteration_data)
+
+        # 2. Record the reflection
+        self._record_reflection(reflection)
+
+        # 3. Read recent reflections
+        recent = self._read_recent_reflections(count=10)
+
+        # 4. Generate evolution proposals
+        proposals = self.reflector.propose_evolution(recent)
+
+        # 5. Apply confident proposals
+        applied = self.evolution_engine.apply_if_confident(proposals, self.threshold)
+
+        # 6. Record metrics
+        node_id = iteration_data.get("node", "unknown")
+        success = reflection.get("success", False)
+        self.metrics.record_iteration(node_id, success=success)
+
+        proposals_skipped = len(proposals) - len(applied)
+
+        return {
+            "reflection": reflection,
+            "proposals_generated": len(proposals),
+            "proposals_applied": len(applied),
+            "proposals_skipped": proposals_skipped,
+        }
+
+    def _read_recent_reflections(self, count: int = 10) -> list[dict]:
+        """Read last N reflections from reflections.jsonl.
+
+        Args:
+            count: Number of recent reflections to read.
+
+        Returns:
+            List of reflection dicts (most recent last).
+        """
+        reflections_path = self.memory_dir / "reflections.jsonl"
+        if not reflections_path.exists():
+            return []
+
+        records: list[dict] = []
+        with open(reflections_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        records.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+
+        return records[-count:]
+
+    def _record_reflection(self, reflection: dict) -> None:
+        """Append reflection to reflections.jsonl.
+
+        Args:
+            reflection: Reflection dict to record.
+        """
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
+        reflections_path = self.memory_dir / "reflections.jsonl"
+        with open(reflections_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(reflection) + "\n")

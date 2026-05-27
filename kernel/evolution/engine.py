@@ -301,6 +301,43 @@ class EvolutionEngine:
             return True
         return False
 
+    def apply_if_confident(self, proposals: list, threshold: float = 0.7) -> list[dict]:
+        """Filter proposals by confidence and apply those above threshold.
+
+        For each qualifying proposal, creates a proper change dict via
+        propose_change(), validates it, and applies it. Proposals that
+        fail validation are skipped.
+
+        Args:
+            proposals: List of proposal dicts with confidence_score.
+            threshold: Minimum confidence_score to auto-apply (default 0.7).
+
+        Returns:
+            List of applied change dicts.
+        """
+        applied: list[dict] = []
+        for proposal in proposals:
+            confidence = proposal.get("confidence_score", 0.0)
+            if confidence <= threshold:
+                continue
+
+            change_type = proposal.get("type", "")
+            details = proposal.get("details", {})
+            reason = proposal.get("reason", "Auto-applied by feedback loop")
+
+            change = self.propose_change(change_type, details, reason)
+
+            # Validate before applying
+            valid, _ = self.validate_change(change)
+            if not valid:
+                continue
+
+            success = self.apply_change(change)
+            if success:
+                applied.append(change)
+
+        return applied
+
     def _log_change(self, change: dict) -> None:
         """Append a change record to history.jsonl.
 

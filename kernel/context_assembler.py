@@ -91,6 +91,20 @@ class ContextAssembler:
                 f"=== OUTPUT FORMAT CONTRACT ===\n\n{contract_content}"
             )
 
+        # 10. Evolution history
+        evolution_history = self._load_evolution_history(count=5)
+        if evolution_history:
+            sections.append(
+                f"=== EVOLUTION HISTORY ===\n\n{evolution_history}"
+            )
+
+        # 11. Recent reflections
+        recent_reflections = self._load_recent_reflections(count=3)
+        if recent_reflections:
+            sections.append(
+                f"=== RECENT REFLECTIONS ===\n\n{recent_reflections}"
+            )
+
         return "\n\n".join(sections)
 
     def _load_current_task(self) -> str:
@@ -218,3 +232,84 @@ class ContextAssembler:
                 except KeyError:
                     parts.append(f"- {name}: (skill not found)")
             return "\n".join(parts)
+
+    def _load_evolution_history(self, count: int = 5) -> str:
+        """Load the last N entries from evolution/history.jsonl.
+
+        Args:
+            count: Number of recent history entries to load.
+
+        Returns:
+            Formatted string of recent evolution history, or empty string.
+        """
+        import json
+
+        history_path = self.kernel_root / "kernel" / "evolution" / "history.jsonl"
+        if not history_path.exists():
+            return ""
+
+        records: list[dict] = []
+        with open(history_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        records.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+
+        recent = records[-count:]
+        if not recent:
+            return ""
+
+        lines = []
+        for entry in recent:
+            status = entry.get("status", "unknown")
+            change_type = entry.get("type", "unknown")
+            reason = entry.get("reason", "")
+            timestamp = entry.get("timestamp", "")
+            lines.append(f"- [{status}] {change_type}: {reason} ({timestamp})")
+        return "\n".join(lines)
+
+    def _load_recent_reflections(self, count: int = 3) -> str:
+        """Load the last N reflections from memory/reflections.jsonl.
+
+        Args:
+            count: Number of recent reflections to load.
+
+        Returns:
+            Formatted string of recent reflections, or empty string.
+        """
+        import json
+
+        reflections_path = self.kernel_root / "memory" / "reflections.jsonl"
+        if not reflections_path.exists():
+            return ""
+
+        records: list[dict] = []
+        with open(reflections_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        records.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+
+        recent = records[-count:]
+        if not recent:
+            return ""
+
+        lines = []
+        for entry in recent:
+            node = entry.get("node", "unknown")
+            success = entry.get("success", False)
+            learnings = entry.get("learnings", [])
+            issues = entry.get("issues", [])
+            result_str = "success" if success else "failure"
+            lines.append(f"- Node '{node}' ({result_str})")
+            for learning in learnings:
+                lines.append(f"  Learning: {learning}")
+            for issue in issues:
+                lines.append(f"  Issue: {issue}")
+        return "\n".join(lines)

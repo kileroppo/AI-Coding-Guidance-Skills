@@ -35,7 +35,11 @@ from typing import Any
 from kernel.bootstrap import BootstrapGenerator
 from kernel.context_assembler import ContextAssembler
 from kernel.contracts import OutputContractValidator
+from kernel.evolution.engine import EvolutionEngine
+from kernel.evolution.metrics import EvolutionMetrics
+from kernel.feedback_loop import FeedbackLoop
 from kernel.graph_executor import GraphExecutor
+from kernel.reflector import Reflector
 from kernel.skill_selector import select_skills_for_goal
 from knowledge.store import KnowledgeStore
 from memory.state_manager import StateManager
@@ -223,6 +227,14 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         validator = OutputContractValidator(
             str(KERNEL_ROOT / "kernel" / "graph.yaml")
         )
+        reflector = Reflector(memory_dir, knowledge)
+        evolution_engine = EvolutionEngine(
+            str(KERNEL_ROOT / "kernel"), graph
+        )
+        evolution_metrics = EvolutionMetrics()
+        feedback_loop = FeedbackLoop(
+            memory_dir, reflector, evolution_engine, evolution_metrics
+        )
 
     # Build max_retries_map from graph nodes
     max_retries_map = {
@@ -281,6 +293,14 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     state_mgr.state.setdefault("errors", []).append(
                         f"AI command exited with code {result.returncode} on node {node['id']}"
                     )
+                    # Run feedback loop on failure
+                    iteration_data = {
+                        "node": node["id"],
+                        "result": "failed",
+                        "errors": [f"AI command exited with code {result.returncode}"],
+                        "iteration": state_mgr.state.get("iteration_count", 0),
+                    }
+                    feedback_loop.run_cycle(iteration_data)
                     # Do not parse stdout for transitions on failure
                     continue
                 ai_output = result.stdout
@@ -351,6 +371,15 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                         f"fell back to: {next_node_id}"
                     )
                 state_mgr.set_current_node(next_node_id)
+
+                # Run feedback loop on successful iteration
+                iteration_data = {
+                    "node": node["id"],
+                    "result": "success",
+                    "errors": [],
+                    "iteration": state_mgr.state.get("iteration_count", 0),
+                }
+                feedback_loop.run_cycle(iteration_data)
 
                 # Track visit and check stuck
                 state_mgr.track_node_visit(next_node_id)
