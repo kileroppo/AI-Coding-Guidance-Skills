@@ -152,7 +152,9 @@ class TestGraphExecutorValidationGaps:
         valid, issues = ge.validate_graph()
         # Graph is valid - all nodes reachable, all transitions valid
         assert valid is True
-        assert issues == []
+        # May have a loop warning but no hard errors
+        hard_errors = [i for i in issues if not i.startswith("Warning:")]
+        assert hard_errors == []
 
 
 # ============================================================
@@ -365,7 +367,9 @@ class TestKnowledgeStoreRebuildSkills:
         """Test rebuild_index for skills scans directories with SKILL.md (lines 245, 271-274)."""
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        skills_dir = knowledge_dir / "skills"
+
+        # Skills directory is now a sibling of knowledge/
+        skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
 
         # Create skill directories with SKILL.md
@@ -414,10 +418,12 @@ class TestSkillComposerAltPath:
         # Set up knowledge dir
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        skills_dir = knowledge_dir / "skills"
-        skills_dir.mkdir()
         (knowledge_dir / "rules").mkdir()
         (knowledge_dir / "patterns").mkdir()
+
+        # Skills directory is a sibling of knowledge/
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
         with open(skills_dir / "_index.yaml", "w") as f:
             yaml.safe_dump({"items": []}, f)
 
@@ -638,7 +644,7 @@ class TestRunnerGaps:
                     "prompt_file": "prompts/orchestrator.md",
                     "description": "Initialize",
                     "transitions": [{"to": "init", "condition": "loop"}],
-                    "max_retries": 1,
+                    "max_retries": 10,
                 },
             ],
             "default_start": "init",

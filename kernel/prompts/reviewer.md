@@ -38,6 +38,19 @@ and adherence to established patterns. You are the guardian of code quality.
 - **review_pass**: Code quality is acceptable. Transition to `reflect`.
 - **review_needs_changes**: Issues found that require fixes. Transition back to `code`.
 
+## Output Format Contract
+
+Your output MUST conform to `kernel/contracts/output_format.md`. Include these lines:
+
+```
+STATUS: success
+TRANSITION: review_pass
+```
+
+Valid TRANSITION values for this node:
+- `review_pass` - Code quality is acceptable.
+- `review_needs_changes` - Issues found that require fixes.
+
 ## Output
 
 - Record review findings in `memory/decisions.jsonl`

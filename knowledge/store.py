@@ -20,15 +20,20 @@ class KnowledgeStore:
     - patterns/: Code and architecture patterns
     """
 
-    def __init__(self, knowledge_dir: str) -> None:
+    def __init__(self, knowledge_dir: str, skills_dir: str | None = None) -> None:
         """Initialize the knowledge store.
 
         Args:
             knowledge_dir: Path to the knowledge/ directory.
+            skills_dir: Optional path to the skills/ directory. Defaults to
+                the skills/ directory at the project root (sibling of knowledge/).
         """
         self.knowledge_root = Path(knowledge_dir)
         self.rules_dir = self.knowledge_root / "rules"
-        self.skills_dir = self.knowledge_root / "skills"
+        if skills_dir is not None:
+            self.skills_dir = Path(skills_dir)
+        else:
+            self.skills_dir = self.knowledge_root.parent / "skills"
         self.patterns_dir = self.knowledge_root / "patterns"
 
     def _load_index(self, category_dir: Path) -> dict:

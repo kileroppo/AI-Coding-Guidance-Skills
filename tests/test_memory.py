@@ -195,3 +195,138 @@ class TestMemoryFiles:
     def test_reflections_jsonl_exists(self, kernel_root: Path) -> None:
         """Test that reflections.jsonl exists."""
         assert (kernel_root / "memory" / "reflections.jsonl").exists()
+
+
+class TestRetryTracking:
+    """Tests for retry tracking and stuck detection."""
+
+    def test_track_node_visit_increments(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test that track_node_visit increments the visit count."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        count = sm.track_node_visit("code")
+        assert count == 1
+        count = sm.track_node_visit("code")
+        assert count == 2
+        count = sm.track_node_visit("code")
+        assert count == 3
+
+    def test_track_node_visit_multiple_nodes(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test that separate nodes are tracked independently."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        sm.track_node_visit("code")
+        sm.track_node_visit("code")
+        sm.track_node_visit("test")
+        assert sm.state["node_visits"]["code"] == 2
+        assert sm.state["node_visits"]["test"] == 1
+
+    def test_check_stuck_below_threshold(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test check_stuck returns False when visits <= max_retries."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        sm.track_node_visit("code")
+        sm.track_node_visit("code")
+        max_retries_map = {"code": 3, "test": 2}
+        is_stuck, node, visits = sm.check_stuck(max_retries_map)
+        assert is_stuck is False
+        assert node is None
+        assert visits == 0
+
+    def test_check_stuck_above_threshold(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test check_stuck returns True when visits > max_retries."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        sm.track_node_visit("code")
+        sm.track_node_visit("code")
+        sm.track_node_visit("code")
+        sm.track_node_visit("code")  # 4 visits, max is 3
+        max_retries_map = {"code": 3, "test": 2}
+        is_stuck, node, visits = sm.check_stuck(max_retries_map)
+        assert is_stuck is True
+        assert node == "code"
+        assert visits == 4
+
+    def test_check_stuck_no_visits(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test check_stuck with no visits returns not stuck."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        max_retries_map = {"code": 3, "test": 2}
+        is_stuck, node, visits = sm.check_stuck(max_retries_map)
+        assert is_stuck is False
+        assert node is None
+        assert visits == 0
+
+    def test_check_convergence_not_stalled(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test check_convergence when progress is being made."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        sm.state["progress_history"] = [0, 1, 2, 3, 4]
+        sm.state["iteration_count"] = 10
+        is_stalled, stale_count = sm.check_convergence(lookback=5)
+        assert is_stalled is False
+        assert stale_count == 0
+
+    def test_check_convergence_stalled(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test check_convergence when tasks_done hasn't changed."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        sm.state["progress_history"] = [3, 3, 3, 3, 3]
+        sm.state["iteration_count"] = 10
+        is_stalled, stale_count = sm.check_convergence(lookback=5)
+        assert is_stalled is True
+        assert stale_count == 5
+
+    def test_check_convergence_insufficient_history(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test check_convergence with insufficient history returns not stalled."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        sm.state["progress_history"] = [3, 3]
+        sm.state["iteration_count"] = 10
+        is_stalled, stale_count = sm.check_convergence(lookback=5)
+        assert is_stalled is False
+        assert stale_count == 0
+
+    def test_node_visits_in_default_state(self, tmp_path: Path) -> None:
+        """Test that node_visits is in DEFAULT_STATE."""
+        from memory.state_manager import DEFAULT_STATE
+        assert "node_visits" in DEFAULT_STATE
+        assert DEFAULT_STATE["node_visits"] == {}
+
+    def test_progress_history_in_default_state(self, tmp_path: Path) -> None:
+        """Test that progress_history is in DEFAULT_STATE."""
+        from memory.state_manager import DEFAULT_STATE
+        assert "progress_history" in DEFAULT_STATE
+        assert DEFAULT_STATE["progress_history"] == []
+
+
+class TestExecutionMode:
+    """Tests for execution_mode support in StateManager."""
+
+    def test_execution_mode_in_default_state(self) -> None:
+        """Test that execution_mode is in DEFAULT_STATE."""
+        from memory.state_manager import DEFAULT_STATE
+        assert "execution_mode" in DEFAULT_STATE
+        assert DEFAULT_STATE["execution_mode"] == "kernel"
+
+    def test_get_execution_mode_default(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test that get_execution_mode returns 'kernel' by default."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        assert sm.get_execution_mode() == "kernel"
+
+    def test_set_execution_mode_kernel(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test setting execution_mode to 'kernel'."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        sm.set_execution_mode("kernel")
+        assert sm.state["execution_mode"] == "kernel"
+
+    def test_set_execution_mode_ralph(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test setting execution_mode to 'ralph'."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        sm.set_execution_mode("ralph")
+        assert sm.state["execution_mode"] == "ralph"
+        assert sm.get_execution_mode() == "ralph"
+
+    def test_set_execution_mode_invalid_raises(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test that setting an invalid mode raises ValueError."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        with pytest.raises(ValueError, match="Invalid execution_mode"):
+            sm.set_execution_mode("invalid")
+
+    def test_set_execution_mode_empty_raises(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test that setting empty string raises ValueError."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        with pytest.raises(ValueError):
+            sm.set_execution_mode("")

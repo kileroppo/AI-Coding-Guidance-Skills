@@ -136,7 +136,10 @@ class TestValidateGraph:
         ge = GraphExecutor(str(tmp_graph))
         valid, issues = ge.validate_graph()
         assert valid is True
-        assert issues == []
+        # The tmp_graph has a deterministic loop (init -> plan -> code -> init)
+        # so there may be a loop warning, but no hard errors
+        hard_errors = [i for i in issues if not i.startswith("Warning:")]
+        assert hard_errors == []
 
     def test_invalid_transition_target(self, tmp_path: Path) -> None:
         """Test graph with transition to nonexistent node."""
@@ -212,3 +215,128 @@ class TestSaveGraph:
         ge2 = GraphExecutor(str(tmp_graph))
         node = ge2.get_node("saved_node")
         assert node["id"] == "saved_node"
+
+
+class TestLoopDetection:
+    """Tests for deterministic loop detection in validate_graph."""
+
+    def test_validate_detects_trivial_loop(self, tmp_path: Path) -> None:
+        """Test that a graph where first transitions form a cycle produces a warning."""
+        graph_file = tmp_path / "loop_graph.yaml"
+        data = {
+            "nodes": [
+                {
+                    "id": "init",
+                    "prompt_file": "prompts/init.md",
+                    "description": "Init",
+                    "transitions": [{"to": "plan", "condition": "ready"}],
+                    "max_retries": 1,
+                },
+                {
+                    "id": "plan",
+                    "prompt_file": "prompts/plan.md",
+                    "description": "Plan",
+                    "transitions": [{"to": "code", "condition": "planned"}],
+                    "max_retries": 1,
+                },
+                {
+                    "id": "code",
+                    "prompt_file": "prompts/code.md",
+                    "description": "Code",
+                    "transitions": [{"to": "plan", "condition": "needs_revision"}],
+                    "max_retries": 1,
+                },
+            ],
+            "default_start": "init",
+        }
+        with open(graph_file, "w") as f:
+            yaml.safe_dump(data, f)
+        ge = GraphExecutor(str(graph_file))
+        valid, issues = ge.validate_graph()
+        # Loop warning should not make graph invalid
+        assert valid is True
+        # Should have a warning about loop
+        warnings = [i for i in issues if i.startswith("Warning:")]
+        assert len(warnings) == 1
+        assert "Deterministic loop" in warnings[0]
+        assert "plan -> code -> plan" in warnings[0]
+
+    def test_validate_no_false_positive_loop(self, tmp_path: Path) -> None:
+        """Test that a graph where first transitions terminate does not warn."""
+        graph_file = tmp_path / "noloop_graph.yaml"
+        data = {
+            "nodes": [
+                {
+                    "id": "init",
+                    "prompt_file": "prompts/init.md",
+                    "description": "Init",
+                    "transitions": [{"to": "plan", "condition": "ready"}],
+                    "max_retries": 1,
+                },
+                {
+                    "id": "plan",
+                    "prompt_file": "prompts/plan.md",
+                    "description": "Plan",
+                    "transitions": [{"to": "done", "condition": "complete"}],
+                    "max_retries": 1,
+                },
+                {
+                    "id": "done",
+                    "prompt_file": "prompts/done.md",
+                    "description": "Done",
+                    "transitions": [],
+                    "max_retries": 1,
+                },
+            ],
+            "default_start": "init",
+        }
+        with open(graph_file, "w") as f:
+            yaml.safe_dump(data, f)
+        ge = GraphExecutor(str(graph_file))
+        valid, issues = ge.validate_graph()
+        assert valid is True
+        warnings = [i for i in issues if i.startswith("Warning:")]
+        assert len(warnings) == 0
+
+    def test_validate_loop_warning_not_error(self, tmp_path: Path) -> None:
+        """Test that loop detection is a warning, not a hard validity failure."""
+        graph_file = tmp_path / "loop_valid.yaml"
+        data = {
+            "nodes": [
+                {
+                    "id": "a",
+                    "prompt_file": "prompts/a.md",
+                    "description": "Node A",
+                    "transitions": [
+                        {"to": "b", "condition": "go"},
+                        {"to": "c", "condition": "skip"},
+                    ],
+                    "max_retries": 1,
+                },
+                {
+                    "id": "b",
+                    "prompt_file": "prompts/b.md",
+                    "description": "Node B",
+                    "transitions": [{"to": "a", "condition": "back"}],
+                    "max_retries": 1,
+                },
+                {
+                    "id": "c",
+                    "prompt_file": "prompts/c.md",
+                    "description": "Node C",
+                    "transitions": [],
+                    "max_retries": 1,
+                },
+            ],
+            "default_start": "a",
+        }
+        with open(graph_file, "w") as f:
+            yaml.safe_dump(data, f)
+        ge = GraphExecutor(str(graph_file))
+        valid, issues = ge.validate_graph()
+        # Graph is valid even with a loop warning
+        assert valid is True
+        # There should be a loop warning (first transition of a goes to b, first of b goes to a)
+        warnings = [i for i in issues if i.startswith("Warning:")]
+        assert len(warnings) == 1
+        assert "a -> b -> a" in warnings[0]

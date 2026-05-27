@@ -18,7 +18,7 @@ nodes:
         condition: "plan_ready"
       - to: plan
         condition: "plan_needs_revision"
-    max_retries: 2
+    max_retries: 5
 
   - id: code
     prompt_file: prompts/coder.md
@@ -28,7 +28,8 @@ nodes:
         condition: "code_written"
       - to: code
         condition: "code_needs_retry"
-    max_retries: 3
+    max_retries: 5
+    stuck_handler: reflect
 
   - id: test
     prompt_file: prompts/tester.md
@@ -38,7 +39,8 @@ nodes:
         condition: "tests_pass"
       - to: code
         condition: "tests_fail"
-    max_retries: 2
+    max_retries: 5
+    stuck_handler: reflect
 
   - id: review
     prompt_file: prompts/reviewer.md
@@ -48,7 +50,7 @@ nodes:
         condition: "review_pass"
       - to: code
         condition: "review_needs_changes"
-    max_retries: 1
+    max_retries: 5
 
   - id: reflect
     prompt_file: prompts/reflector.md
@@ -58,7 +60,7 @@ nodes:
         condition: "evolution_proposed"
       - to: plan
         condition: "no_evolution_needed"
-    max_retries: 1
+    max_retries: 5
 
   - id: evolve
     prompt_file: prompts/reflector.md
@@ -66,7 +68,7 @@ nodes:
     transitions:
       - to: plan
         condition: "evolution_applied"
-    max_retries: 1
+    max_retries: 5
 
 default_start: init
 max_iterations: 30
