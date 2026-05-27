@@ -1,7 +1,8 @@
 """Skill auto-selection based on goal keyword matching.
 
 This module provides functions for automatically selecting relevant skills
-from the knowledge store based on the development goal text.
+from the knowledge store based on the development goal text, and for
+selecting skills by workflow phase.
 """
 
 
@@ -52,3 +53,19 @@ def select_skills_for_goal(
     scored.sort(key=lambda x: (-x[1], x[0]))
 
     return [name for name, _ in scored[:max_skills]]
+
+
+def select_skills_for_phase(phase: str, workflow: dict) -> list[str]:
+    """Return skills for a given workflow phase from the workflow dict.
+
+    Args:
+        phase: The workflow phase name (e.g. 'idea_phase', 'execution_phase').
+        workflow: The workflow dict mapping phase names to skill name lists.
+
+    Returns:
+        List of skill names for the given phase, or empty list if phase
+        is not found in the workflow dict.
+    """
+    if not phase or not workflow:
+        return []
+    return workflow.get(phase, [])
