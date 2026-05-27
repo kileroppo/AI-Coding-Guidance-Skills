@@ -36,6 +36,7 @@ from kernel.bootstrap import BootstrapGenerator
 from kernel.context_assembler import ContextAssembler
 from kernel.contracts import OutputContractValidator
 from kernel.graph_executor import GraphExecutor
+from kernel.skill_selector import select_skills_for_goal
 from knowledge.store import KnowledgeStore
 from memory.state_manager import StateManager
 
@@ -100,6 +101,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=str,
         default=None,
         help="Manual workspace project name override (default: derived from goal)",
+    )
+    parser.add_argument(
+        "--skills",
+        type=str,
+        default=None,
+        help="Comma-separated list of skill names to load (overrides auto-selection)",
     )
     return parser.parse_args(argv)
 
@@ -180,6 +187,17 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     # Reset node_visits on resume so stale counts don't trigger false stuck detection
     if args.resume:
         state_mgr.state["node_visits"] = {}
+
+    # Skill auto-selection
+    if hasattr(args, "skills") and args.skills is not None:
+        # Manual override: use provided skill list
+        selected_skills = [s.strip() for s in args.skills.split(",") if s.strip()]
+    else:
+        # Auto-select skills based on goal
+        available_skills = knowledge.list_skills()
+        goal_text = state_mgr.state.get("goal", "")
+        selected_skills = select_skills_for_goal(goal_text, available_skills)
+    state_mgr.state.setdefault("context", {})["skills_loaded"] = selected_skills
 
     state_mgr.state["max_iterations"] = args.max_iterations
     state_mgr.state["status"] = "running"

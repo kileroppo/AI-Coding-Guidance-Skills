@@ -191,20 +191,30 @@ class ContextAssembler:
         return "\n".join(lines)
 
     def _load_skills(self, skill_names: list, knowledge_store: Any) -> str:
-        """Load skill content for all listed skills.
+        """Load skill content for all listed skills using SkillComposer.
+
+        Attempts to load actual SKILL.md content via SkillComposer. Falls back
+        to descriptions if compose fails.
 
         Args:
             skill_names: List of skill names to load.
             knowledge_store: KnowledgeStore instance.
 
         Returns:
-            Combined skill descriptions.
+            Combined skill content or descriptions.
         """
-        parts = []
-        for name in skill_names:
-            try:
-                skill = knowledge_store.get_skill(name)
-                parts.append(f"- {name}: {skill.get('description', '(no description)')}")
-            except KeyError:
-                parts.append(f"- {name}: (skill not found)")
-        return "\n".join(parts)
+        from knowledge.skill_composer import SkillComposer
+
+        composer = SkillComposer(knowledge_store)
+        try:
+            return composer.compose(skill_names, max_tokens=4000)
+        except (ValueError, FileNotFoundError):
+            # Fallback to descriptions if compose fails
+            parts = []
+            for name in skill_names:
+                try:
+                    skill = knowledge_store.get_skill(name)
+                    parts.append(f"- {name}: {skill.get('description', '(no description)')}")
+                except KeyError:
+                    parts.append(f"- {name}: (skill not found)")
+            return "\n".join(parts)

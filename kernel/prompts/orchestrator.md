@@ -25,7 +25,11 @@ execution cycle.
    any rules that apply. Check `knowledge/patterns/_index.yaml` for
    relevant patterns.
 
-5. **Decide**: Based on the above, determine if we can proceed to planning.
+5. **Select Skills**: After loading the goal, select relevant skills using tag
+   matching and write them to `state.context.skills_loaded`. Skills are matched
+   by comparing goal keywords against skill tags and descriptions.
+
+6. **Decide**: Based on the above, determine if we can proceed to planning.
 
 6. **Initialize Workspace**: After loading the goal, set `workspace_path` in
    state.yaml based on a sanitized version of the goal (lowercase, spaces to
