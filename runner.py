@@ -35,6 +35,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from kernel.bootstrap import BootstrapGenerator
 from kernel.context_assembler import ContextAssembler
 from kernel.contracts import OutputContractValidator
@@ -44,8 +46,10 @@ from kernel.feedback_loop import FeedbackLoop
 from kernel.graph_executor import GraphExecutor
 from kernel.philosophy.principles import should_stop_iterating, should_retreat
 from kernel.reflector import Reflector
+from kernel.reporter import Reporter
 from kernel.skill_selector import select_skills_for_goal
 from kernel.adapters.ralph_adapter import RalphAdapter
+from kernel.task_manager import TaskManager
 from knowledge.store import KnowledgeStore
 from memory.state_manager import StateManager
 
@@ -76,6 +80,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--check",
         action="store_true",
         help="Run setup checks and exit",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show iteration-by-iteration progress",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Print current status and exit",
     )
     parser.add_argument(
         "--max-iterations",
@@ -218,7 +232,22 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         exit_code = checker.print_results(results)
         sys.exit(exit_code)
 
-    # Validate that --goal is required unless --check is used
+    # Handle --status: print current status and exit early
+    if args.status:
+        reporter = Reporter()
+        state_path = str(KERNEL_ROOT / "kernel" / "state.yaml")
+        memory_dir = str(KERNEL_ROOT / "memory")
+        state_mgr = StateManager(state_path, memory_dir)
+        tasks_path = Path(memory_dir) / "tasks.yaml"
+        if tasks_path.exists():
+            tm = TaskManager(memory_dir)
+            tasks_list = tm.load_tasks()
+        else:
+            tasks_list = []
+        print(reporter.format_status(state_mgr.get_state(), tasks_list))
+        return state_mgr.get_state()
+
+    # Validate that --goal is required unless --check or --status is used
     if not args.goal:
         print("error: the following arguments are required: --goal", file=sys.stderr)
         sys.exit(2)
@@ -363,6 +392,15 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                         f"Node '{stuck_node}' exceeded max_retries "
                         f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
                     )
+                    # Report stuck to stderr
+                    reporter = Reporter()
+                    print(
+                        reporter.report_stuck(
+                            state_mgr.state, stuck_node,
+                            state_mgr.state.get("errors", [])
+                        ),
+                        file=sys.stderr,
+                    )
                     break
                 continue
 
@@ -388,6 +426,10 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     state_mgr.state.setdefault("errors", []).append(
                         f"AI command exited with code {result.returncode} on node {node['id']}"
                     )
+                    # Verbose: report failed iteration
+                    if args.verbose:
+                        reporter = Reporter()
+                        print(reporter.report_iteration(state_mgr.get_state(), node, "failed"))
                     # Run feedback loop on failure
                     iteration_data = {
                         "node": node["id"],
@@ -494,6 +536,11 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     )
                 state_mgr.set_current_node(next_node_id)
 
+                # Verbose: report successful iteration
+                if args.verbose:
+                    reporter = Reporter()
+                    print(reporter.report_iteration(state_mgr.get_state(), node, "success"))
+
                 # Run feedback loop on successful iteration
                 iteration_data = {
                     "node": node["id"],
@@ -583,6 +630,17 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     # Mark as complete if we finished the loop
     if state_mgr.state.get("status") == "running":
         state_mgr.state["status"] = "complete"
+
+    # Print completion report after Mode 3 execution
+    if mode3:
+        reporter = Reporter()
+        tasks_path_file = Path(memory_dir) / "tasks.yaml"
+        if tasks_path_file.exists():
+            tm = TaskManager(memory_dir)
+            tasks_list = tm.load_tasks()
+        else:
+            tasks_list = []
+        print(reporter.report_completion(state_mgr.get_state(), tasks_list))
 
     # Export to prd.json if execution mode is ralph
     if state_mgr.get_execution_mode() == "ralph" and not args.dry_run:
