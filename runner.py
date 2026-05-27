@@ -29,6 +29,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -111,6 +112,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=str,
         default=None,
         help="Comma-separated list of skill names to load (overrides auto-selection)",
+    )
+    parser.add_argument(
+        "--retry-strategy",
+        type=str,
+        choices=["continue", "skip", "backoff"],
+        default="continue",
+        help="Retry strategy on failure: continue (retry same), skip (advance to next), backoff (exponential wait)",
     )
     return parser.parse_args(argv)
 
@@ -271,6 +279,28 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             else:
                 print(f"  Prompt file: [not found]")
 
+        if mode3:
+            # Mode 3: Track visit BEFORE execution so failures count
+            state_mgr.track_node_visit(node["id"])
+            is_stuck, stuck_node, visits = state_mgr.check_stuck(max_retries_map)
+            if is_stuck:
+                # Check for stuck_handler
+                try:
+                    stuck_node_def = graph.get_node(stuck_node)
+                    handler = stuck_node_def.get("stuck_handler")
+                except KeyError:
+                    handler = None
+                if handler:
+                    state_mgr.set_current_node(handler)
+                else:
+                    state_mgr.state["status"] = "stuck"
+                    state_mgr.state.setdefault("errors", []).append(
+                        f"Node '{stuck_node}' exceeded max_retries "
+                        f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
+                    )
+                    break
+                continue
+
         state_mgr.increment_iteration()
 
         if mode3:
@@ -301,14 +331,28 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                         "iteration": state_mgr.state.get("iteration_count", 0),
                     }
                     feedback_loop.run_cycle(iteration_data)
-                    # Do not parse stdout for transitions on failure
-                    continue
+                    state_mgr.trim_errors()
+                    # Apply retry strategy
+                    if args.retry_strategy == "skip":
+                        transitions = graph.get_available_transitions(node["id"])
+                        if transitions:
+                            next_node_id = transitions[0]["to"]
+                            state_mgr.set_current_node(next_node_id)
+                        continue
+                    elif args.retry_strategy == "backoff":
+                        visit_count = state_mgr.state.get("node_visits", {}).get(node["id"], 1)
+                        delay = min(2 ** (visit_count - 1), 60)
+                        time.sleep(delay)
+                        continue
+                    else:  # "continue"
+                        continue
                 ai_output = result.stdout
                 transition_condition = _parse_transition(ai_output)
             except subprocess.TimeoutExpired:
                 state_mgr.state.setdefault("errors", []).append(
                     f"Timeout after {args.timeout}s on node {node['id']}"
                 )
+                state_mgr.trim_errors()
                 # Stay on same node - do not advance
                 continue
             except FileNotFoundError:
@@ -335,6 +379,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     f"Contract violations on node {node['id']}: "
                     f"{contract_result.violations}"
                 )
+                state_mgr.trim_errors()
                 # Stay on same node - do not advance
                 continue
 
@@ -380,76 +425,59 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     "iteration": state_mgr.state.get("iteration_count", 0),
                 }
                 feedback_loop.run_cycle(iteration_data)
-
-                # Track visit and check stuck
-                state_mgr.track_node_visit(next_node_id)
-                is_stuck, stuck_node, visits = state_mgr.check_stuck(max_retries_map)
-                if is_stuck:
-                    # Check for stuck_handler
-                    try:
-                        stuck_node_def = graph.get_node(stuck_node)
-                        handler = stuck_node_def.get("stuck_handler")
-                    except KeyError:
-                        handler = None
-                    if handler:
-                        state_mgr.set_current_node(handler)
-                    else:
-                        state_mgr.state["status"] = "stuck"
-                        state_mgr.state.setdefault("errors", []).append(
-                            f"Node '{stuck_node}' exceeded max_retries "
-                            f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
-                        )
-                        break
             else:
                 state_mgr.state["status"] = "complete"
                 break
+            state_mgr.trim_errors()
         else:
             # SCAFFOLDING: In this mode (Mode 1), the runner always picks the first
             # available transition without evaluating conditions. This is intentional:
             # the runner does not call an LLM and cannot evaluate conditions like
             # "tests_pass" or "plan_ready". For actual condition evaluation, an AI
             # agent should read BOOT.md directly (Mode 2) and decide transitions itself.
+
+            # Track visit BEFORE advancing so stuck detection works on failed loops
+            state_mgr.track_node_visit(node["id"])
+            is_stuck, stuck_node, visits = state_mgr.check_stuck(max_retries_map)
+            if is_stuck:
+                # Check for stuck_handler
+                try:
+                    stuck_node_def = graph.get_node(stuck_node)
+                    handler = stuck_node_def.get("stuck_handler")
+                except KeyError:
+                    handler = None
+                if handler:
+                    if args.dry_run:
+                        print(
+                            f"  STUCK: Node '{stuck_node}' exceeded max_retries "
+                            f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
+                        )
+                        print(f"  Redirecting to stuck_handler: {handler}")
+                        print()
+                    state_mgr.set_current_node(handler)
+                else:
+                    if args.dry_run:
+                        print(
+                            f"  STUCK: Node '{stuck_node}' exceeded max_retries "
+                            f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
+                        )
+                        print()
+                    state_mgr.state["status"] = "stuck"
+                    state_mgr.state.setdefault("errors", []).append(
+                        f"Node '{stuck_node}' exceeded max_retries "
+                        f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
+                    )
+                    break
+                continue
+
             transitions = graph.get_available_transitions(node["id"])
             if transitions:
                 next_node_id = transitions[0]["to"]
                 state_mgr.set_current_node(next_node_id)
 
-                # Track visit and check stuck
-                state_mgr.track_node_visit(next_node_id)
-                is_stuck, stuck_node, visits = state_mgr.check_stuck(max_retries_map)
-                if is_stuck:
-                    # Check for stuck_handler
-                    try:
-                        stuck_node_def = graph.get_node(stuck_node)
-                        handler = stuck_node_def.get("stuck_handler")
-                    except KeyError:
-                        handler = None
-                    if handler:
-                        if args.dry_run:
-                            print(
-                                f"  STUCK: Node '{stuck_node}' exceeded max_retries "
-                                f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
-                            )
-                            print(f"  Redirecting to stuck_handler: {handler}")
-                            print()
-                        state_mgr.set_current_node(handler)
-                    else:
-                        if args.dry_run:
-                            print(
-                                f"  STUCK: Node '{stuck_node}' exceeded max_retries "
-                                f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
-                            )
-                            print()
-                        state_mgr.state["status"] = "stuck"
-                        state_mgr.state.setdefault("errors", []).append(
-                            f"Node '{stuck_node}' exceeded max_retries "
-                            f"(visited {visits} times, max {max_retries_map.get(stuck_node)})"
-                        )
-                        break
-                else:
-                    if args.dry_run:
-                        print(f"  Next node: {next_node_id}")
-                        print()
+                if args.dry_run:
+                    print(f"  Next node: {next_node_id}")
+                    print()
             else:
                 state_mgr.state["status"] = "complete"
                 if args.dry_run:

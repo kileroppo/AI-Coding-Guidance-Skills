@@ -245,6 +245,27 @@ class StateManager:
         """
         return self.memory_dir / "tasks.yaml"
 
+    def trim_errors(self, max_kept: int = 10) -> None:
+        """Keep only the last max_kept errors, archive older ones to error_history.jsonl.
+
+        Args:
+            max_kept: Maximum number of errors to retain in state.
+        """
+        errors = self.state.get("errors", [])
+        if len(errors) > max_kept:
+            archived = errors[:-max_kept] if max_kept > 0 else errors
+            self.state["errors"] = errors[-max_kept:] if max_kept > 0 else []
+            # Append archived errors to error_history.jsonl
+            history_path = self.memory_dir / "error_history.jsonl"
+            self.memory_dir.mkdir(parents=True, exist_ok=True)
+            with open(history_path, "a", encoding="utf-8") as f:
+                for error in archived:
+                    f.write(json.dumps({"error": error, "timestamp": datetime.now(timezone.utc).isoformat()}) + "\n")
+
+    def clear_errors(self) -> None:
+        """Move all errors to error_history.jsonl and reset errors list."""
+        self.trim_errors(max_kept=0)
+
     def check_convergence(self, lookback: int = 5) -> tuple[bool, int]:
         """Check if progress has stalled (tasks_done unchanged over lookback iterations).
 
