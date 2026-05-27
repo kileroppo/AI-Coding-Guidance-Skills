@@ -174,7 +174,7 @@ class Reflector:
                 })
 
                 # Philosophy: suggest simplification for high failure counts
-                if should_simplify(count, count):
+                if should_simplify(count):
                     proposals.append({
                         "type": "modify_prompt",
                         "details": {

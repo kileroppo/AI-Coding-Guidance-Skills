@@ -62,15 +62,32 @@ class RalphAdapter:
             List of kernel task dicts.
         """
         user_stories = prd_data.get("userStories", [])
-        # Sort by priority to ensure dependency chain is correct
-        sorted_stories = sorted(user_stories, key=lambda s: s.get("priority", 1))
+        # Sort by priority (stable sort preserves input order as tie-breaker)
+        sorted_stories = sorted(
+            user_stories, key=lambda s: s.get("priority", 1)
+        )
         tasks = []
+        # Track the last task index that had a strictly lower priority
+        last_lower_priority_idx: int | None = None
+        prev_priority: int | None = None
         for i, story in enumerate(sorted_stories):
             task_id = f"T-{i + 1:03d}"
             status = "done" if story.get("passes", False) else "pending"
             dependencies: list[str] = []
-            if story.get("priority", 1) > 1 and i > 0:
-                dependencies = [f"T-{i:03d}"]
+            current_priority = story.get("priority", 1)
+
+            if i > 0 and prev_priority is not None:
+                if current_priority > prev_priority:
+                    # Priority is strictly greater: depend on the last task
+                    # with the previous (lower) priority value
+                    dependencies = [f"T-{i:03d}"]
+                    last_lower_priority_idx = i - 1
+                elif current_priority == prev_priority and last_lower_priority_idx is not None:
+                    # Same priority as previous: parallel tasks, depend on the
+                    # last task with a strictly lower priority
+                    dependencies = [f"T-{last_lower_priority_idx + 1:03d}"]
+
+            prev_priority = current_priority
             tasks.append({
                 "id": task_id,
                 "title": story.get("title", ""),

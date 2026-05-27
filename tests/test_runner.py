@@ -1122,3 +1122,154 @@ class TestReviewFixes:
         assert any("exited with code 1" in e for e in state.get("errors", []))
         # Should NOT have advanced the node (stdout should not be parsed)
         assert state["current_node"] == "init"
+
+    def test_progress_history_populated_on_success(self, runner_env: Path, monkeypatch) -> None:
+        """Test that progress_history is populated after successful Mode 3 iterations."""
+        from unittest.mock import patch, MagicMock
+
+        monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
+
+        # Create tasks.yaml with some tasks
+        memory_dir = runner_env / "memory"
+        tasks_data = {
+            "tasks": [
+                {"id": "T-001", "title": "Task 1", "status": "done", "dependencies": []},
+                {"id": "T-002", "title": "Task 2", "status": "pending", "dependencies": []},
+            ]
+        }
+        with open(memory_dir / "tasks.yaml", "w") as f:
+            yaml.safe_dump(tasks_data, f)
+
+        call_count = [0]
+
+        def mock_run(*args, **kwargs):
+            call_count[0] += 1
+            result = MagicMock()
+            result.returncode = 0
+            result.stderr = ""
+            if call_count[0] == 1:
+                result.stdout = "STATUS: success\nTRANSITION: goal_loaded"
+            elif call_count[0] == 2:
+                result.stdout = "STATUS: success\nTRANSITION: plan_ready"
+            else:
+                result.stdout = "STATUS: success\nTRANSITION: done"
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            state = runner.main([
+                "--goal", "test progress history",
+                "--ai-command", "echo hi",
+                "--max-iterations", "5",
+            ])
+
+        # progress_history should contain entries (1 task done per iteration)
+        assert "progress_history" in state
+        assert len(state["progress_history"]) > 0
+        assert all(isinstance(v, int) for v in state["progress_history"])
+
+    def test_progress_history_capped_at_20(self, runner_env: Path, monkeypatch) -> None:
+        """Test that progress_history is capped at 20 entries."""
+        from unittest.mock import patch, MagicMock
+
+        monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
+
+        # Create tasks.yaml with some tasks
+        memory_dir = runner_env / "memory"
+        tasks_data = {
+            "tasks": [
+                {"id": "T-001", "title": "Task 1", "status": "done", "dependencies": []},
+                {"id": "T-002", "title": "Task 2", "status": "pending", "dependencies": []},
+            ]
+        }
+        with open(memory_dir / "tasks.yaml", "w") as f:
+            yaml.safe_dump(tasks_data, f)
+
+        # Pre-seed progress_history with 19 entries
+        state_file = runner_env / "kernel" / "state.yaml"
+        state_data = yaml.safe_load(state_file.read_text())
+        state_data["progress_history"] = list(range(19))
+        with open(state_file, "w") as f:
+            yaml.safe_dump(state_data, f)
+
+        call_count = [0]
+
+        def mock_run(*args, **kwargs):
+            call_count[0] += 1
+            result = MagicMock()
+            result.returncode = 0
+            result.stderr = ""
+            if call_count[0] == 1:
+                result.stdout = "STATUS: success\nTRANSITION: goal_loaded"
+            elif call_count[0] == 2:
+                result.stdout = "STATUS: success\nTRANSITION: plan_ready"
+            else:
+                result.stdout = "STATUS: success\nTRANSITION: done"
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            state = runner.main([
+                "--goal", "test cap",
+                "--ai-command", "echo hi",
+                "--max-iterations", "5",
+            ])
+
+        # progress_history should not exceed 20 entries
+        assert len(state.get("progress_history", [])) <= 20
+
+    def test_assessment_skipped_on_resume_with_existing_file(self, runner_env: Path, monkeypatch) -> None:
+        """Test that capability assessment is skipped on --resume when assessment.yaml exists."""
+        monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
+
+        # Create pre-existing assessment.yaml
+        memory_dir = runner_env / "memory"
+        existing_assessment = {
+            "goal": "previous goal",
+            "confidence": 0.8,
+            "covered_skills": ["skill-a"],
+            "skill_gaps": [],
+            "suggestions": [],
+            "timestamp": "2025-01-01T00:00:00+00:00",
+        }
+        with open(memory_dir / "assessment.yaml", "w") as f:
+            yaml.safe_dump(existing_assessment, f)
+
+        # Set up pre-existing state with a goal
+        state_file = runner_env / "kernel" / "state.yaml"
+        state_data = yaml.safe_load(state_file.read_text())
+        state_data["goal"] = "previous goal"
+        with open(state_file, "w") as f:
+            yaml.safe_dump(state_data, f)
+
+        state = runner.main([
+            "--goal", "previous goal",
+            "--resume",
+            "--max-iterations", "1",
+        ])
+
+        # The existing assessment.yaml should NOT have been overwritten
+        with open(memory_dir / "assessment.yaml") as f:
+            saved = yaml.safe_load(f)
+        assert saved["goal"] == "previous goal"
+        assert saved["confidence"] == 0.8
+        assert saved["timestamp"] == "2025-01-01T00:00:00+00:00"
+
+    def test_assessment_runs_on_fresh_start(self, runner_env: Path, monkeypatch) -> None:
+        """Test that capability assessment runs on fresh start (no --resume)."""
+        monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
+
+        memory_dir = runner_env / "memory"
+        # Ensure no assessment.yaml exists
+        assessment_path = memory_dir / "assessment.yaml"
+        if assessment_path.exists():
+            assessment_path.unlink()
+
+        state = runner.main([
+            "--goal", "test fresh assessment",
+            "--max-iterations", "1",
+        ])
+
+        # assessment.yaml should have been created
+        assert assessment_path.exists()
+        with open(assessment_path) as f:
+            saved = yaml.safe_load(f)
+        assert saved["goal"] == "test fresh assessment"

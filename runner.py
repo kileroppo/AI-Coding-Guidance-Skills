@@ -299,27 +299,32 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
 
     # Capability assessment
     if not args.dry_run and args.goal:
-        assessor = CapabilityAssessor()
-        available_skills = knowledge.list_skills()
-        assessment = assessor.assess_capabilities(args.goal, available_skills)
-        confidence = assessment.get("confidence", 0.0)
-        gaps = assessment.get("gaps", [])
+        assessment_path = Path(memory_dir) / "assessment.yaml"
+        # Skip assessment on resume if assessment.yaml already exists
+        if args.resume and assessment_path.exists():
+            pass
+        else:
+            assessor = CapabilityAssessor()
+            available_skills = knowledge.list_skills()
+            assessment = assessor.assess_capabilities(args.goal, available_skills)
+            confidence = assessment.get("confidence", 0.0)
+            gaps = assessment.get("gaps", [])
 
-        if confidence < 0.3 and gaps:
-            print(
-                f"[WARNING] Low skill coverage ({confidence:.0%}). "
-                f"The kernel lacks skills for: {', '.join(gaps[:5])}. "
-                f"Consider creating skills with 'write-a-skill'.",
-                file=sys.stderr,
-            )
-        elif confidence < 0.7 and gaps:
-            print(
-                f"[NOTE] Partial skill coverage ({confidence:.0%}). "
-                f"Some areas may need new skills: {', '.join(gaps[:5])}",
-                file=sys.stderr,
-            )
+            if confidence < 0.3 and gaps:
+                print(
+                    f"[WARNING] Low skill coverage ({confidence:.0%}). "
+                    f"The kernel lacks skills for: {', '.join(gaps[:5])}. "
+                    f"Consider creating skills with 'write-a-skill'.",
+                    file=sys.stderr,
+                )
+            elif confidence < 0.7 and gaps:
+                print(
+                    f"[NOTE] Partial skill coverage ({confidence:.0%}). "
+                    f"Some areas may need new skills: {', '.join(gaps[:5])}",
+                    file=sys.stderr,
+                )
 
-        assessor.write_assessment(assessment, args.goal, memory_dir)
+            assessor.write_assessment(assessment, args.goal, memory_dir)
 
     state_mgr.state["max_iterations"] = args.max_iterations
     state_mgr.state["status"] = "running"
@@ -574,6 +579,18 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     "iteration": state_mgr.state.get("iteration_count", 0),
                 }
                 feedback_loop.run_cycle(iteration_data)
+
+                # Populate progress_history for stall detection
+                tasks_path_progress = Path(memory_dir) / "tasks.yaml"
+                if tasks_path_progress.exists():
+                    tm_progress = TaskManager(memory_dir)
+                    _total, tasks_done_count = tm_progress.get_progress()
+                    if _total > 0:
+                        progress_history = state_mgr.state.setdefault("progress_history", [])
+                        progress_history.append(tasks_done_count)
+                        # Cap at 20 entries to prevent unbounded growth
+                        if len(progress_history) > 20:
+                            state_mgr.state["progress_history"] = progress_history[-20:]
 
                 # Philosophy check: should_stop_iterating
                 reflections_path = Path(memory_dir) / "reflections.jsonl"

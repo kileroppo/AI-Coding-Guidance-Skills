@@ -41,14 +41,12 @@ def should_stop_iterating(state: dict, reflections: list[dict]) -> bool:
     return False
 
 
-def should_simplify(task_complexity: int, failure_count: int) -> bool:
+def should_simplify(failure_count: int) -> bool:
     """The greatest Dao is the simplest.
 
     Returns True if failure_count >= 3, suggesting the task should be split.
-    task_complexity is number of steps/subtasks (used for logging context).
 
     Args:
-        task_complexity: Number of steps/subtasks in the task.
         failure_count: Number of consecutive failures for this task.
 
     Returns:
@@ -77,7 +75,8 @@ def should_retreat(node_id: str, consecutive_failures: int, max_retries: int = 5
 def assess_terrain(goal: str, available_skills: list[dict]) -> dict:
     """Know heaven and know earth.
 
-    Tokenizes goal into words, matches against skill tags and description words.
+    Delegates to CapabilityAssessor.assess_capabilities for consistent
+    goal-skill matching, then maps the output to the assess_terrain format.
 
     Args:
         goal: The goal string to assess.
@@ -88,59 +87,26 @@ def assess_terrain(goal: str, available_skills: list[dict]) -> dict:
         gaps (list of goal keywords with no matching skill),
         recommendation ("proceed"|"proceed_with_caution"|"reconsider").
     """
-    # Tokenize goal into keywords (lowercase, non-empty, length > 2)
-    goal_keywords = [
-        w for w in goal.lower().split() if len(w) > 2
-    ]
+    from kernel.capability_assessment import CapabilityAssessor
 
-    if not goal_keywords:
-        return {
-            "coverage_score": 0.0,
-            "covered": [],
-            "gaps": [],
-            "recommendation": "reconsider",
-        }
+    assessor = CapabilityAssessor()
+    result = assessor.assess_capabilities(goal, available_skills)
 
-    # Build a set of all skill words (from tags and descriptions)
-    skill_words: set = set()
-    skill_names_matched: list = []
-    for skill in available_skills:
-        tags = [t.lower() for t in skill.get("tags", [])]
-        desc_words = [w.lower() for w in skill.get("description", "").split() if len(w) > 2]
-        skill_words.update(tags)
-        skill_words.update(desc_words)
+    confidence = result.get("confidence", 0.0)
+    covered = result.get("covered", [])
+    gaps = result.get("gaps", [])
 
-    # Match keywords against skill words
-    covered_keywords: list = []
-    gaps: list = []
-    for keyword in goal_keywords:
-        if keyword in skill_words:
-            covered_keywords.append(keyword)
-        else:
-            gaps.append(keyword)
-
-    # Determine which skills contributed to coverage
-    covered_skill_names: list = []
-    for skill in available_skills:
-        tags = [t.lower() for t in skill.get("tags", [])]
-        desc_words = [w.lower() for w in skill.get("description", "").split() if len(w) > 2]
-        all_skill_words = set(tags + desc_words)
-        if any(kw in all_skill_words for kw in covered_keywords):
-            covered_skill_names.append(skill.get("name", ""))
-
-    coverage_score = len(covered_keywords) / len(goal_keywords)
-
-    # Determine recommendation
-    if coverage_score >= 0.7:
+    # Map confidence to recommendation using thresholds
+    if confidence >= 0.7:
         recommendation = "proceed"
-    elif coverage_score >= 0.4:
+    elif confidence >= 0.4:
         recommendation = "proceed_with_caution"
     else:
         recommendation = "reconsider"
 
     return {
-        "coverage_score": coverage_score,
-        "covered": covered_skill_names,
+        "coverage_score": confidence,
+        "covered": covered,
         "gaps": gaps,
         "recommendation": recommendation,
     }

@@ -101,28 +101,23 @@ class TestShouldSimplify:
 
     def test_returns_false_with_zero_failures(self) -> None:
         """No failures means no simplification needed."""
-        assert should_simplify(5, 0) is False
+        assert should_simplify(0) is False
 
     def test_returns_false_with_one_failure(self) -> None:
         """Single failure does not warrant simplification."""
-        assert should_simplify(10, 1) is False
+        assert should_simplify(1) is False
 
     def test_returns_false_with_two_failures(self) -> None:
         """Two failures still below threshold."""
-        assert should_simplify(3, 2) is False
+        assert should_simplify(2) is False
 
     def test_returns_true_with_three_failures(self) -> None:
         """Exactly 3 failures triggers simplification."""
-        assert should_simplify(5, 3) is True
+        assert should_simplify(3) is True
 
     def test_returns_true_with_many_failures(self) -> None:
         """High failure count always triggers."""
-        assert should_simplify(1, 10) is True
-
-    def test_complexity_does_not_affect_result(self) -> None:
-        """task_complexity is contextual, does not change the decision."""
-        assert should_simplify(100, 2) is False
-        assert should_simplify(1, 3) is True
+        assert should_simplify(10) is True
 
 
 class TestShouldRetreat:
@@ -166,9 +161,9 @@ class TestAssessTerrain:
     def test_full_coverage(self) -> None:
         """All goal keywords matched by skills."""
         skills = [
-            {"name": "web-skill", "tags": ["build", "rest", "api"], "description": "Build REST APIs"},
+            {"name": "web-skill", "tags": ["rest", "api", "server"], "description": "REST APIs server"},
         ]
-        result = assess_terrain("build rest api", skills)
+        result = assess_terrain("rest api server", skills)
         assert result["coverage_score"] == 1.0
         assert "web-skill" in result["covered"]
         assert result["gaps"] == []
@@ -179,7 +174,7 @@ class TestAssessTerrain:
         skills = [
             {"name": "db-skill", "tags": ["database", "sql"], "description": "Database operations"},
         ]
-        result = assess_terrain("build database with authentication", skills)
+        result = assess_terrain("database authentication layer", skills)
         assert 0.0 < result["coverage_score"] < 1.0
         assert "db-skill" in result["covered"]
         assert len(result["gaps"]) > 0
@@ -189,7 +184,7 @@ class TestAssessTerrain:
         skills = [
             {"name": "math-skill", "tags": ["math", "algebra"], "description": "Math computations"},
         ]
-        result = assess_terrain("build web server", skills)
+        result = assess_terrain("deploy web server", skills)
         assert result["coverage_score"] == 0.0
         assert result["covered"] == []
         assert result["recommendation"] == "reconsider"
@@ -205,14 +200,14 @@ class TestAssessTerrain:
 
     def test_empty_skills(self) -> None:
         """No skills means no coverage."""
-        result = assess_terrain("build web api", [])
+        result = assess_terrain("deploy web api", [])
         assert result["coverage_score"] == 0.0
         assert result["covered"] == []
         assert len(result["gaps"]) > 0
         assert result["recommendation"] == "reconsider"
 
     def test_short_words_filtered_from_goal(self) -> None:
-        """Words with 2 or fewer characters are filtered out."""
+        """Words with fewer than 3 characters are filtered out."""
         skills = [
             {"name": "api-skill", "tags": ["api"], "description": "API tools"},
         ]
@@ -223,10 +218,10 @@ class TestAssessTerrain:
     def test_proceed_with_caution_range(self) -> None:
         """Coverage between 0.4 and 0.7 gives proceed_with_caution."""
         skills = [
-            {"name": "code-skill", "tags": ["code", "python"], "description": "Write code"},
+            {"name": "code-skill", "tags": ["code", "python"], "description": "Code python"},
         ]
-        # "write python code" - 3 keywords, likely 2 match
-        result = assess_terrain("write python code testing deploy", skills)
+        # "python code testing deploy release" - 5 keywords, likely 2 match
+        result = assess_terrain("python code testing deploy release", skills)
         assert result["recommendation"] in ("proceed_with_caution", "reconsider", "proceed")
 
     def test_matching_via_description_words(self) -> None:
@@ -243,7 +238,7 @@ class TestAssessTerrain:
         skills = [
             {"name": "test-skill", "tags": ["testing", "pytest"], "description": ""},
         ]
-        result = assess_terrain("testing with pytest", skills)
+        result = assess_terrain("testing pytest", skills)
         assert result["coverage_score"] > 0.0
         assert "test-skill" in result["covered"]
 
@@ -253,7 +248,7 @@ class TestAssessTerrain:
             {"name": "api-skill", "tags": ["api", "rest"], "description": "REST API"},
             {"name": "db-skill", "tags": ["database"], "description": "Database layer"},
         ]
-        result = assess_terrain("rest api with database", skills)
+        result = assess_terrain("rest api database", skills)
         assert result["coverage_score"] > 0.5
         assert len(result["covered"]) >= 1
 

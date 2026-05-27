@@ -362,6 +362,25 @@ class TestImportFromPrdJson:
         assert tasks[1]["title"] == "Second"
         assert tasks[2]["title"] == "Third"
 
+    def test_import_same_priority_parallel(self, adapter: RalphAdapter) -> None:
+        """Test that stories with same priority are treated as parallel (no dependency between them)."""
+        prd = {
+            "userStories": [
+                {"id": "US-001", "title": "Setup", "priority": 1, "passes": True},
+                {"id": "US-002", "title": "Feature A", "priority": 2, "passes": False},
+                {"id": "US-003", "title": "Feature B", "priority": 2, "passes": False},
+                {"id": "US-004", "title": "Integration", "priority": 3, "passes": False},
+            ]
+        }
+        tasks = adapter.import_from_prd_json(prd)
+        # Priority 1: no deps
+        assert tasks[0]["dependencies"] == []
+        # Priority 2 stories: both depend on the last priority-1 task (T-001), not on each other
+        assert tasks[1]["dependencies"] == ["T-001"]
+        assert tasks[2]["dependencies"] == ["T-001"]
+        # Priority 3: depends on the last priority-2 task (T-003)
+        assert tasks[3]["dependencies"] == ["T-003"]
+
 
 class TestRoundTrip:
     """Tests for export then import round-trip consistency."""
