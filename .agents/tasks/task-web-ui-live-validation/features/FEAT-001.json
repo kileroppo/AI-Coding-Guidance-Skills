@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Web UI Foundation - FastAPI dashboard with SSE live logs, full API for kernel state/control, and single-page HTML dashboard with Tailwind CDN",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create web/ directory at project root with __init__.py",
     "Create web/app.py with FastAPI app containing: GET / (dashboard), GET /api/state, GET /api/tasks, GET /api/history (evolution history from kernel/evolution/history.jsonl), GET /api/reflections (from memory/reflections.jsonl), GET /api/skills (from skills/_index.yaml), POST /api/goal (set goal), POST /api/start (run kernel in background thread), POST /api/stop (stop execution), GET /api/logs (SSE stream)",
@@ -26,5 +26,5 @@
     "python -m pytest tests/ --cov --cov-fail-under=90 -q"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "SSE streaming tests cannot use TestClient.stream() with iter_lines due to infinite generator blocking. Used route existence and configuration checks instead. All 925 tests pass (894 existing + 31 new), coverage 98.35%. The start endpoint background thread finishes quickly in test mode so stop timing is non-deterministic."
 }
