@@ -18,15 +18,26 @@ class Reflector:
     and failure, then proposes changes to improve the kernel's workflow.
     """
 
-    def __init__(self, memory_dir: str, knowledge_store: Any) -> None:
+    def __init__(self, memory_dir: str, knowledge_store: Any, graph_advisor: Any = None) -> None:
         """Initialize the reflector.
 
         Args:
             memory_dir: Path to the memory/ directory.
             knowledge_store: A KnowledgeStore instance.
+            graph_advisor: Optional GraphAdvisor for structural graph proposals.
         """
         self.memory_dir = memory_dir
         self.knowledge_store = knowledge_store
+        self.graph_advisor = graph_advisor
+
+    def suggest_graph_evolution(self, goal: str, skills_loaded: list[str], history: list[dict]) -> list[dict]:
+        """Get structural graph change proposals from the graph advisor.
+
+        Returns empty list if no graph_advisor is configured.
+        """
+        if self.graph_advisor is None:
+            return []
+        return self.graph_advisor.suggest_graph_changes(goal, skills_loaded, history)
 
     def analyze_iteration(self, iteration_data: dict) -> dict:
         """Analyze iteration data and produce a reflection dict.
