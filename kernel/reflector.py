@@ -8,6 +8,8 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
+from kernel.philosophy.principles import should_stop_iterating, should_simplify
+
 
 class Reflector:
     """Analyzes iteration results and proposes kernel evolution.
@@ -64,6 +66,7 @@ class Reflector:
             "learnings": learnings,
             "issues": issues,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "philosophy_signals": {"stop_suggested": False},
         }
 
     def categorize_failure(self, errors: list, result: str = "") -> str:
@@ -169,6 +172,19 @@ class Reflector:
                     "confidence_score": confidence_score,
                     "failure_category": most_common_category,
                 })
+
+                # Philosophy: suggest simplification for high failure counts
+                if should_simplify(count, count):
+                    proposals.append({
+                        "type": "modify_prompt",
+                        "details": {
+                            "node_id": node,
+                            "prompt_file": f"prompts/{node}.md",
+                        },
+                        "reason": f"\u5927\u9053\u81f3\u7b80: consider splitting this task - node '{node}' has failed {count} times",
+                        "confidence_score": min(1.0, count / 10) * 0.8,
+                        "failure_category": "complexity",
+                    })
 
         # Propose rules for consistently successful patterns
         for node, count in success_counts.items():

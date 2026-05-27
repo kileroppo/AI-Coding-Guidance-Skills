@@ -42,6 +42,7 @@ from kernel.evolution.engine import EvolutionEngine
 from kernel.evolution.metrics import EvolutionMetrics
 from kernel.feedback_loop import FeedbackLoop
 from kernel.graph_executor import GraphExecutor
+from kernel.philosophy.principles import should_stop_iterating, should_retreat
 from kernel.reflector import Reflector
 from kernel.skill_selector import select_skills_for_goal
 from kernel.adapters.ralph_adapter import RalphAdapter
@@ -333,6 +334,12 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                 if handler:
                     state_mgr.set_current_node(handler)
                 else:
+                    # Philosophy: should_retreat check
+                    if should_retreat(stuck_node, visits, max_retries_map.get(stuck_node, 5)):
+                        print(
+                            f"[PHILOSOPHY] \u4e09\u5341\u516d\u8ba1\u8d70\u4e3a\u4e0a: Retreating from node '{stuck_node}'",
+                            file=sys.stderr,
+                        )
                     state_mgr.state["status"] = "stuck"
                     state_mgr.state.setdefault("errors", []).append(
                         f"Node '{stuck_node}' exceeded max_retries "
@@ -477,6 +484,24 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     "iteration": state_mgr.state.get("iteration_count", 0),
                 }
                 feedback_loop.run_cycle(iteration_data)
+
+                # Philosophy check: should_stop_iterating
+                reflections_path = Path(memory_dir) / "reflections.jsonl"
+                recent_reflections = []
+                if reflections_path.exists():
+                    lines = reflections_path.read_text(encoding="utf-8").strip().splitlines()
+                    for line in lines[-10:]:
+                        try:
+                            recent_reflections.append(json.loads(line))
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                if should_stop_iterating(state_mgr.state, recent_reflections):
+                    print(
+                        "[PHILOSOPHY] \u77e5\u6b62\u4e0d\u6b86: Diminishing returns detected, stopping.",
+                        file=sys.stderr,
+                    )
+                    state_mgr.state["status"] = "complete"
+                    break
             else:
                 state_mgr.state["status"] = "complete"
                 break
