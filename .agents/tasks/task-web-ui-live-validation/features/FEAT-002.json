@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Live Evolution Validation - Scenario-based tests that PROVE the evolution mechanism works with real file I/O, realistic error patterns, and multi-iteration cycles. Also includes E2E AI simulation with a mock AI server.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Create tests/test_live_evolution.py with scenario-based integration tests that: (a) simulate 50 iterations with realistic error patterns fed into FeedbackLoop, (b) verify that after N failures on same node the evolution engine ACTUALLY proposes and applies a prompt change, (c) verify the change persists on disk (reads back the modified prompt file), (d) verify the historian correctly prunes history when > 500 entries, (e) verify metrics show degraded health when failures accumulate",
     "Create tests/fixtures/ directory with tests/fixtures/live_scenarios.yaml containing 3 realistic scenarios: 'React app with failing tests' (expects prompt modification after repeated code node failures), 'Backend API all reviews pass' (expects no evolution or rule addition for review node), 'Full stack with code-test loops' (expects graph_advisor to suggest design node insertion)",
