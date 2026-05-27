@@ -46,6 +46,7 @@ from kernel.feedback_loop import FeedbackLoop
 from kernel.graph_executor import GraphExecutor
 from kernel.philosophy.principles import should_stop_iterating, should_retreat
 from kernel.reflector import Reflector
+from kernel.capability_assessment import CapabilityAssessor
 from kernel.reporter import Reporter
 from kernel.skill_selector import select_skills_for_goal
 from kernel.adapters.ralph_adapter import RalphAdapter
@@ -295,6 +296,30 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         goal_text = state_mgr.state.get("goal", "")
         selected_skills = select_skills_for_goal(goal_text, available_skills)
     state_mgr.state.setdefault("context", {})["skills_loaded"] = selected_skills
+
+    # Capability assessment
+    if not args.dry_run and args.goal:
+        assessor = CapabilityAssessor()
+        available_skills = knowledge.list_skills()
+        assessment = assessor.assess_capabilities(args.goal, available_skills)
+        confidence = assessment.get("confidence", 0.0)
+        gaps = assessment.get("gaps", [])
+
+        if confidence < 0.3 and gaps:
+            print(
+                f"[WARNING] Low skill coverage ({confidence:.0%}). "
+                f"The kernel lacks skills for: {', '.join(gaps[:5])}. "
+                f"Consider creating skills with 'write-a-skill'.",
+                file=sys.stderr,
+            )
+        elif confidence < 0.7 and gaps:
+            print(
+                f"[NOTE] Partial skill coverage ({confidence:.0%}). "
+                f"Some areas may need new skills: {', '.join(gaps[:5])}",
+                file=sys.stderr,
+            )
+
+        assessor.write_assessment(assessment, args.goal, memory_dir)
 
     state_mgr.state["max_iterations"] = args.max_iterations
     state_mgr.state["status"] = "running"
