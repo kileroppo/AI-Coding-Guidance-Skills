@@ -25,6 +25,7 @@ Mode 3 (Real AI execution via subprocess): The runner assembles context from
 """
 
 import argparse
+import os
 import re
 import shlex
 import subprocess
@@ -154,6 +155,33 @@ def _sanitize_project_name(goal: str) -> str:
     name = goal.lower().replace(" ", "-")
     name = re.sub(r"[^a-z0-9-]", "", name)
     return name[:50]
+
+
+def _validate_workspace_paths(
+    files_written: list[str], workspace_path: str
+) -> list[str]:
+    """Validate that all file paths are within the workspace boundary.
+
+    Args:
+        files_written: List of file paths reported by the AI.
+        workspace_path: The expected workspace root path.
+
+    Returns:
+        List of violation strings for paths outside the workspace.
+    """
+    violations: list[str] = []
+    if not workspace_path:
+        return violations
+    # Normalize workspace path to ensure consistent comparison
+    normalized_workspace = os.path.normpath(os.path.abspath(workspace_path))
+    for file_path in files_written:
+        normalized_file = os.path.normpath(os.path.abspath(file_path))
+        if not normalized_file.startswith(normalized_workspace + os.sep) and \
+                normalized_file != normalized_workspace:
+            violations.append(
+                f"Path '{file_path}' is outside workspace '{workspace_path}'"
+            )
+    return violations
 
 
 def main(argv: list[str] | None = None) -> dict[str, Any]:
@@ -382,6 +410,18 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                 state_mgr.trim_errors()
                 # Stay on same node - do not advance
                 continue
+
+            # Validate workspace boundary for files_written
+            workspace_path = state_mgr.state.get("workspace_path", "")
+            if workspace_path and contract_result.files_written:
+                ws_violations = _validate_workspace_paths(
+                    contract_result.files_written, workspace_path
+                )
+                for v in ws_violations:
+                    print(
+                        f"[WARNING] Workspace boundary: {v}",
+                        file=sys.stderr,
+                    )
 
             # Determine next node
             transitions = graph.get_available_transitions(node["id"])

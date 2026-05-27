@@ -301,22 +301,29 @@ class EvolutionEngine:
             return True
         return False
 
-    def apply_if_confident(self, proposals: list, threshold: float = 0.7) -> list[dict]:
+    def apply_if_confident(
+        self, proposals: list, threshold: float = 0.7, max_applies: int = 1
+    ) -> list[dict]:
         """Filter proposals by confidence and apply those above threshold.
 
         For each qualifying proposal, creates a proper change dict via
         propose_change(), validates it, and applies it. Proposals that
-        fail validation are skipped.
+        fail validation are skipped. Stops after max_applies successful
+        applications to bound the number of changes per cycle.
 
         Args:
             proposals: List of proposal dicts with confidence_score.
             threshold: Minimum confidence_score to auto-apply (default 0.7).
+            max_applies: Maximum number of proposals to apply (default 1).
 
         Returns:
             List of applied change dicts.
         """
         applied: list[dict] = []
         for proposal in proposals:
+            if len(applied) >= max_applies:
+                break
+
             confidence = proposal.get("confidence_score", 0.0)
             if confidence <= threshold:
                 continue

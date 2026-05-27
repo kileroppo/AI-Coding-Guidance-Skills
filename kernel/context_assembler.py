@@ -110,39 +110,31 @@ class ContextAssembler:
     def _load_current_task(self) -> str:
         """Load the current task from memory/tasks.yaml.
 
-        Finds the in_progress task, or the first eligible pending task
-        (whose dependencies are all done), and formats it for display.
+        Uses TaskManager for consistent task selection logic. Finds the
+        in_progress task first, or the first eligible pending task
+        (whose dependencies are all done).
 
         Returns:
             Formatted task string, or empty string if no task is available.
         """
-        tasks_path = self.kernel_root / "memory" / "tasks.yaml"
-        if not tasks_path.exists():
-            return ""
-        with open(tasks_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        tasks = data.get("tasks", [])
+        from kernel.task_manager import TaskManager
+
+        memory_dir = str(self.kernel_root / "memory")
+        task_mgr = TaskManager(memory_dir)
+        tasks = task_mgr.load_tasks()
         if not tasks:
             return ""
 
-        status_map = {t["id"]: t.get("status", "pending") for t in tasks}
-
-        # First look for an in_progress task
+        # First check for in_progress task
         current = None
         for task in tasks:
             if task.get("status") == "in_progress":
                 current = task
                 break
 
-        # If no in_progress task, find first eligible pending task
+        # If none in progress, get next eligible pending
         if current is None:
-            pending = [t for t in tasks if t.get("status") == "pending"]
-            pending.sort(key=lambda t: t["id"])
-            for task in pending:
-                deps = task.get("dependencies", [])
-                if all(status_map.get(dep) == "done" for dep in deps):
-                    current = task
-                    break
+            current = task_mgr.get_next_task()
 
         if current is None:
             return ""

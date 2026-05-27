@@ -31,6 +31,7 @@ class FeedbackLoop:
         reflector: Reflector,
         evolution_engine: EvolutionEngine,
         metrics: EvolutionMetrics,
+        max_applies_per_cycle: int = 1,
     ) -> None:
         """Initialize the feedback loop.
 
@@ -39,12 +40,14 @@ class FeedbackLoop:
             reflector: Reflector instance for iteration analysis.
             evolution_engine: EvolutionEngine for applying changes.
             metrics: EvolutionMetrics for tracking performance.
+            max_applies_per_cycle: Max proposals to apply per cycle (default 1).
         """
         self.memory_dir = Path(memory_dir)
         self.reflector = reflector
         self.evolution_engine = evolution_engine
         self.metrics = metrics
         self.threshold = 0.7
+        self.max_applies_per_cycle = max_applies_per_cycle
 
     def run_cycle(self, iteration_data: dict) -> dict:
         """Run a full feedback cycle after an iteration.
@@ -75,8 +78,10 @@ class FeedbackLoop:
         # 4. Generate evolution proposals
         proposals = self.reflector.propose_evolution(recent)
 
-        # 5. Apply confident proposals
-        applied = self.evolution_engine.apply_if_confident(proposals, self.threshold)
+        # 5. Apply confident proposals (capped per cycle)
+        applied = self.evolution_engine.apply_if_confident(
+            proposals, self.threshold, max_applies=self.max_applies_per_cycle
+        )
 
         # 6. Record metrics
         node_id = iteration_data.get("node", "unknown")
