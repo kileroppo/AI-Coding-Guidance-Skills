@@ -15,6 +15,7 @@ workflow:
   quality_phase:
     - diagnose
     - improve-codebase-architecture
+    - relentless-iteration
   design_phase:
     - ui-ux-pro-max
     - ui-styling
@@ -163,3 +164,8 @@ items:
     description: "XiaoHongShu content collection with scheduling"
     tags: [scraping, social, collection]
     composable_with: [web-scraper]
+  - name: relentless-iteration
+    path: relentless-iteration
+    description: "Continuous fault-finding and fixing in cycles until production-quality"
+    tags: [quality, iteration, hardening, testing]
+    composable_with: [tdd, diagnose, improve-codebase-architecture]

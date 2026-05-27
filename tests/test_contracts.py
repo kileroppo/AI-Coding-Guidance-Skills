@@ -475,12 +475,12 @@ class TestRunnerContractIntegration:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Done.\nSTATUS: success\nTRANSITION: goal_loaded\n"
-        mock_result.stderr = ""
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("Done.\nSTATUS: success\nTRANSITION: goal_loaded\n", "")
+        mock_proc.returncode = 0
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test contract valid",
                 "--ai-command", "echo hello",
@@ -497,12 +497,12 @@ class TestRunnerContractIntegration:
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
         # Missing STATUS line - should fail validation
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Some output\nTRANSITION: goal_loaded\n"
-        mock_result.stderr = ""
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("Some output\nTRANSITION: goal_loaded\n", "")
+        mock_proc.returncode = 0
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test contract invalid",
                 "--ai-command", "echo hi",
@@ -521,12 +521,12 @@ class TestRunnerContractIntegration:
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
         # plan_ready is not valid for init node
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Done.\nSTATUS: success\nTRANSITION: plan_ready\n"
-        mock_result.stderr = ""
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("Done.\nSTATUS: success\nTRANSITION: plan_ready\n", "")
+        mock_proc.returncode = 0
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test bad transition",
                 "--ai-command", "echo hi",
@@ -545,12 +545,12 @@ class TestRunnerContractIntegration:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "No required lines here"
-        mock_result.stderr = ""
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("No required lines here", "")
+        mock_proc.returncode = 0
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             runner.main([
                 "--goal", "test violation logging",
                 "--ai-command", "echo hi",

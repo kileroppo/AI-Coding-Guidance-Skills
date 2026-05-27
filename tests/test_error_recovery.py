@@ -95,12 +95,12 @@ class TestTrackVisitBeforeExecution:
         """Verify node visits increment even when subprocess fails."""
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "Error occurred"
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("", "Error occurred")
+        mock_proc.returncode = 1
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test tracking",
                 "--ai-command", "echo hi",
@@ -123,12 +123,12 @@ class TestTrackVisitBeforeExecution:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "Always failing"
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("", "Always failing")
+        mock_proc.returncode = 1
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test stuck on failure",
                 "--ai-command", "echo hi",
@@ -272,12 +272,12 @@ class TestRetryStrategies:
         """Default behavior: stays on same node after failure."""
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "Error"
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("", "Error")
+        mock_proc.returncode = 1
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test continue",
                 "--ai-command", "echo hi",
@@ -292,12 +292,12 @@ class TestRetryStrategies:
         """Skip strategy forces advancement on failure."""
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "Error"
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("", "Error")
+        mock_proc.returncode = 1
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test skip",
                 "--ai-command", "echo hi",
@@ -312,17 +312,17 @@ class TestRetryStrategies:
         """Backoff strategy applies exponential delay."""
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "Error"
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("", "Error")
+        mock_proc.returncode = 1
+        mock_proc.kill.return_value = None
 
         sleep_calls = []
 
         def mock_sleep(seconds):
             sleep_calls.append(seconds)
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             with patch("time.sleep", side_effect=mock_sleep):
                 state = runner.main([
                     "--goal", "test backoff",
@@ -351,17 +351,17 @@ class TestRetryStrategies:
         with open(graph_file, "w") as f:
             yaml.safe_dump(graph_data, f)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "Error"
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("", "Error")
+        mock_proc.returncode = 1
+        mock_proc.kill.return_value = None
 
         sleep_calls = []
 
         def mock_sleep(seconds):
             sleep_calls.append(seconds)
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             with patch("time.sleep", side_effect=mock_sleep):
                 state = runner.main([
                     "--goal", "test backoff cap",

@@ -77,6 +77,10 @@ After completing your task:
   You are responsible for updating `kernel/state.yaml` with results and advancing
   `current_node` to the next node based on transition conditions.
 
+**Mode 2 Protocol References:**
+- See `kernel/contracts/mode2_protocol.md` for file operations and YAML format examples
+- See `kernel/contracts/state_transitions.md` for valid transitions and conditions
+
 ## CRITICAL CONSTRAINTS
 
 - You are a stateless agent. All persistent memory is in the filesystem.

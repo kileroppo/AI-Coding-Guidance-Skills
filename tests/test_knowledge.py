@@ -558,13 +558,13 @@ class TestSkillPathResolution:
     def test_skill_paths_resolve(self, kernel_root: Path) -> None:
         """Test that skill paths in _index.yaml resolve to existing SKILL.md files.
 
-        At least 20 of 27 skills should resolve to actual SKILL.md files.
+        At least 20 of 28 skills should resolve to actual SKILL.md files.
         Skills with paths that do not resolve are reported as warnings.
         """
         index_path = kernel_root / "knowledge" / "skills" / "_index.yaml"
         data = yaml.safe_load(index_path.read_text())
         items = data.get("items", [])
-        assert len(items) == 27, f"Expected 27 skills in index, found {len(items)}"
+        assert len(items) == 28, f"Expected 28 skills in index, found {len(items)}"
 
         resolved = []
         unresolved = []
