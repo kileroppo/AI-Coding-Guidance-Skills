@@ -4,6 +4,7 @@ This module assembles a full context prompt from kernel components,
 suitable for piping to an AI CLI tool via subprocess.
 """
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -13,13 +14,15 @@ import yaml
 class ContextAssembler:
     """Assembles full context prompt from kernel components."""
 
-    def __init__(self, kernel_root: Path):
+    def __init__(self, kernel_root: Path, max_skill_content_chars: int = 8000):
         """Initialize the context assembler.
 
         Args:
             kernel_root: Path to the project root directory.
+            max_skill_content_chars: Maximum characters allowed per skill content.
         """
         self.kernel_root = kernel_root
+        self.max_skill_content_chars = max_skill_content_chars
 
     def assemble(self, state: dict, node: dict, graph_executor: Any,
                  knowledge_store: Any, token_budget: int = 32000) -> str:
@@ -164,6 +167,10 @@ class ContextAssembler:
             active_trimmable.pop(0)
             full_text = _build_text(sections, active_trimmable)
             estimated_tokens = len(full_text) // 4
+
+        # Check total context size and warn if over recommended limit
+        all_sections = sections + active_trimmable
+        self._estimate_total_context_size(all_sections)
 
         return full_text
 
@@ -367,7 +374,8 @@ class ContextAssembler:
         """Load skill content for all listed skills using SkillComposer.
 
         Attempts to load actual SKILL.md content via SkillComposer. Falls back
-        to descriptions if compose fails.
+        to descriptions if compose fails. Truncates if total content exceeds
+        max_skill_content_chars * len(skill_names).
 
         Args:
             skill_names: List of skill names to load.
@@ -380,7 +388,7 @@ class ContextAssembler:
 
         composer = SkillComposer(knowledge_store)
         try:
-            return composer.compose(skill_names, max_tokens=4000)
+            content = composer.compose(skill_names, max_tokens=4000)
         except (ValueError, FileNotFoundError):
             # Fallback to descriptions if compose fails
             parts = []
@@ -390,7 +398,67 @@ class ContextAssembler:
                     parts.append(f"- {name}: {skill.get('description', '(no description)')}")
                 except KeyError:
                     parts.append(f"- {name}: (skill not found)")
-            return "\n".join(parts)
+            content = "\n".join(parts)
+
+        # Apply total skill content limit
+        max_total = self.max_skill_content_chars * len(skill_names)
+        if len(content) > max_total:
+            content = self._truncate_skill_content(content, max_total)
+
+        return content
+
+    def _truncate_skill_content(self, content: str, max_chars: int) -> str:
+        """Truncate skill content that exceeds max_chars.
+
+        Attempts summary mode first: keeps intro + first section (before the
+        second ## heading). If that's still too long or no heading found,
+        hard-truncates at max_chars.
+
+        Args:
+            content: The skill content string.
+            max_chars: Maximum allowed characters.
+
+        Returns:
+            Truncated content with appropriate marker.
+        """
+        if len(content) <= max_chars:
+            return content
+
+        # Try summary mode: find the second ## heading
+        lines = content.split("\n")
+        heading_positions = []
+        for i, line in enumerate(lines):
+            if line.startswith("## "):
+                heading_positions.append(i)
+
+        if len(heading_positions) >= 2:
+            # Keep everything before the second ## heading
+            summary = "\n".join(lines[:heading_positions[1]])
+            if len(summary) <= max_chars:
+                return summary + "\n\n[TRUNCATED - see individual skill files for full content]"
+
+        # Hard truncate at max_chars
+        return content[:max_chars] + "\n...[TRUNCATED]"
+
+    def _estimate_total_context_size(self, sections: list[str]) -> int:
+        """Compute total character count from all sections.
+
+        Emits a warning to stderr if total exceeds 100000 chars.
+
+        Args:
+            sections: List of section strings.
+
+        Returns:
+            Total character count.
+        """
+        total = sum(len(s) for s in sections)
+        if total > 100000:
+            print(
+                f"[WARNING] Context size ({total} chars) exceeds recommended "
+                f"limit. Skills may be over-loaded.",
+                file=sys.stderr,
+            )
+        return total
 
     def _load_evolution_history(self, count: int = 5) -> str:
         """Load the last N entries from evolution/history.jsonl.
