@@ -1,0 +1,7 @@
+{
+  "task_id": "task-web-ui-live-validation",
+  "task_description": "Add web UI dashboard, live data validation of evolution mechanism, end-to-end AI simulation, core moat (skill accumulation + project history), metrics visualization, security hardening, user scenarios, and stress testing. 10+ rounds of critical iteration.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004", "FEAT-005"],
+  "blocked_reason": null
+}
