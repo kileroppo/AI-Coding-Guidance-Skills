@@ -83,7 +83,7 @@ class SkillFactory:
         if not valid:
             raise ValueError(f"Invalid skill name '{name}': {reason}")
 
-        skill_dir = self.knowledge_dir / "skills" / name
+        skill_dir = self.knowledge_dir.parent / "skills" / name
         skill_dir.mkdir(parents=True, exist_ok=True)
 
         skill_md = skill_dir / "SKILL.md"

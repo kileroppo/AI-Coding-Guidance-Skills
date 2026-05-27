@@ -367,7 +367,9 @@ class TestKnowledgeStoreRebuildSkills:
         """Test rebuild_index for skills scans directories with SKILL.md (lines 245, 271-274)."""
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        skills_dir = knowledge_dir / "skills"
+
+        # Skills directory is now a sibling of knowledge/
+        skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
 
         # Create skill directories with SKILL.md
@@ -416,10 +418,12 @@ class TestSkillComposerAltPath:
         # Set up knowledge dir
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        skills_dir = knowledge_dir / "skills"
-        skills_dir.mkdir()
         (knowledge_dir / "rules").mkdir()
         (knowledge_dir / "patterns").mkdir()
+
+        # Skills directory is a sibling of knowledge/
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
         with open(skills_dir / "_index.yaml", "w") as f:
             yaml.safe_dump({"items": []}, f)
 

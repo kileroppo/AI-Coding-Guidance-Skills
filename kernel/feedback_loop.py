@@ -34,6 +34,7 @@ class FeedbackLoop:
         metrics: EvolutionMetrics,
         max_applies_per_cycle: int = 1,
         history_file: Path | None = None,
+        skill_accumulator=None,
     ) -> None:
         """Initialize the feedback loop.
 
@@ -45,6 +46,8 @@ class FeedbackLoop:
             max_applies_per_cycle: Max proposals to apply per cycle (default 1).
             history_file: Path to evolution history.jsonl. If provided,
                           creates an EvolutionHistorian for analysis and pruning.
+            skill_accumulator: Optional SkillAccumulator instance. When provided
+                               and a project completes, analyze_completion() is called.
         """
         self.memory_dir = Path(memory_dir)
         self.reflector = reflector
@@ -53,6 +56,7 @@ class FeedbackLoop:
         self.threshold = 0.7
         self.max_applies_per_cycle = max_applies_per_cycle
         self.historian: EvolutionHistorian | None = None
+        self.skill_accumulator = skill_accumulator
         if history_file is not None:
             self.historian = EvolutionHistorian(history_file)
 
@@ -107,6 +111,17 @@ class FeedbackLoop:
         success = reflection.get("success", False)
         self.metrics.record_iteration(node_id, success=success)
 
+        # 6b. If project is complete, trigger skill accumulation
+        if self.skill_accumulator and iteration_data.get("project_complete"):
+            recent_reflections = self._read_recent_reflections(count=50)
+            project_data = {
+                "goal": iteration_data.get("goal", ""),
+                "skills_used": iteration_data.get("skills_used", []),
+                "outcome": iteration_data.get("result", ""),
+                "reflections": recent_reflections,
+            }
+            self.skill_accumulator.analyze_completion(project_data)
+
         # 7. Auto-prune history
         if self.historian:
             self.historian.prune_history(max_entries=500)
@@ -148,6 +163,9 @@ class FeedbackLoop:
     def _record_reflection(self, reflection: dict) -> None:
         """Append reflection to reflections.jsonl.
 
+        After appending, if the file exceeds 1000 lines, prune to keep
+        only the last 500 lines.
+
         Args:
             reflection: Reflection dict to record.
         """
@@ -155,3 +173,12 @@ class FeedbackLoop:
         reflections_path = self.memory_dir / "reflections.jsonl"
         with open(reflections_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(reflection) + "\n")
+
+        # Prune if file exceeds 1000 lines: keep only last 500
+        try:
+            lines = reflections_path.read_text(encoding="utf-8").splitlines()
+            if len(lines) > 1000:
+                keep = lines[-500:]
+                reflections_path.write_text("\n".join(keep) + "\n", encoding="utf-8")
+        except OSError:
+            pass

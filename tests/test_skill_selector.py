@@ -189,8 +189,12 @@ class TestRunnerSkillAutoSelection:
 
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        for sub in ["rules", "skills", "patterns"]:
+        for sub in ["rules", "patterns"]:
             (knowledge_dir / sub).mkdir()
+
+        # Skills directory is now a sibling of knowledge/ at project root
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
 
         # Add some skills to the index
         skills_index = {
@@ -203,7 +207,7 @@ class TestRunnerSkillAutoSelection:
                  "description": "UI/UX design intelligence", "composable_with": []},
             ]
         }
-        with open(knowledge_dir / "skills" / "_index.yaml", "w") as f:
+        with open(skills_dir / "_index.yaml", "w") as f:
             yaml.safe_dump(skills_index, f)
 
         with open(knowledge_dir / "rules" / "_index.yaml", "w") as f:
@@ -271,12 +275,15 @@ class TestContextAssemblerLoadsContent:
         # Set up knowledge dir with a skill that has SKILL.md
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        (knowledge_dir / "skills").mkdir()
         (knowledge_dir / "rules").mkdir()
         (knowledge_dir / "patterns").mkdir()
 
+        # Skills directory is a sibling of knowledge/
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+
         # Create skill directory with SKILL.md
-        skill_dir = knowledge_dir / "skills" / "test-skill"
+        skill_dir = skills_dir / "test-skill"
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_text("# Test Skill\n\nThis is the skill content.")
 
@@ -288,7 +295,7 @@ class TestContextAssemblerLoadsContent:
                  "composable_with": []},
             ]
         }
-        with open(knowledge_dir / "skills" / "_index.yaml", "w") as f:
+        with open(skills_dir / "_index.yaml", "w") as f:
             yaml.safe_dump(index_data, f)
         with open(knowledge_dir / "rules" / "_index.yaml", "w") as f:
             yaml.safe_dump({"items": []}, f)
@@ -309,9 +316,12 @@ class TestContextAssemblerLoadsContent:
 
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        (knowledge_dir / "skills").mkdir()
         (knowledge_dir / "rules").mkdir()
         (knowledge_dir / "patterns").mkdir()
+
+        # Skills directory is a sibling of knowledge/
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
 
         # Register skill in index but no SKILL.md exists
         index_data = {
@@ -321,7 +331,7 @@ class TestContextAssemblerLoadsContent:
                  "composable_with": []},
             ]
         }
-        with open(knowledge_dir / "skills" / "_index.yaml", "w") as f:
+        with open(skills_dir / "_index.yaml", "w") as f:
             yaml.safe_dump(index_data, f)
         with open(knowledge_dir / "rules" / "_index.yaml", "w") as f:
             yaml.safe_dump({"items": []}, f)
@@ -343,11 +353,14 @@ class TestContextAssemblerLoadsContent:
 
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        (knowledge_dir / "skills").mkdir()
         (knowledge_dir / "rules").mkdir()
         (knowledge_dir / "patterns").mkdir()
 
-        with open(knowledge_dir / "skills" / "_index.yaml", "w") as f:
+        # Skills directory is a sibling of knowledge/
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+
+        with open(skills_dir / "_index.yaml", "w") as f:
             yaml.safe_dump({"items": []}, f)
         with open(knowledge_dir / "rules" / "_index.yaml", "w") as f:
             yaml.safe_dump({"items": []}, f)

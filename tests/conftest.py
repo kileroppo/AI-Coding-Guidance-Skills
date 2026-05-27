@@ -34,14 +34,22 @@ def tmp_knowledge(tmp_path: Path) -> Path:
     (knowledge_dir / "rules").mkdir()
     (knowledge_dir / "rules" / "manual").mkdir()
     (knowledge_dir / "rules" / "learned").mkdir()
-    (knowledge_dir / "skills").mkdir()
     (knowledge_dir / "patterns").mkdir()
 
+    # Skills directory is now a sibling of knowledge/ at project root level
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+
     # Create empty indexes
-    for subdir in ["rules", "skills", "patterns"]:
+    for subdir in ["rules", "patterns"]:
         index_path = knowledge_dir / subdir / "_index.yaml"
         with open(index_path, "w") as f:
             yaml.safe_dump({"items": []}, f)
+
+    # Skills index lives in the skills/ directory
+    skills_index_path = skills_dir / "_index.yaml"
+    with open(skills_index_path, "w") as f:
+        yaml.safe_dump({"items": []}, f)
 
     return knowledge_dir
 

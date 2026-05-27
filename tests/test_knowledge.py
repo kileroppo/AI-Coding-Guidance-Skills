@@ -199,12 +199,12 @@ class TestSkillComposer:
         """Test composing multiple skills."""
         ks = KnowledgeStore(str(tmp_knowledge))
         # Create skill directories with SKILL.md
-        skill1_dir = tmp_knowledge / "skills" / "skill1"
-        skill1_dir.mkdir(parents=True)
+        skill1_dir = tmp_knowledge.parent / "skills" / "skill1"
+        skill1_dir.mkdir(parents=True, exist_ok=True)
         (skill1_dir / "SKILL.md").write_text("# Skill 1 content")
 
-        skill2_dir = tmp_knowledge / "skills" / "skill2"
-        skill2_dir.mkdir(parents=True)
+        skill2_dir = tmp_knowledge.parent / "skills" / "skill2"
+        skill2_dir.mkdir(parents=True, exist_ok=True)
         (skill2_dir / "SKILL.md").write_text("# Skill 2 content")
 
         ks.add_skill("skill1", "First skill", path="skill1")
@@ -257,8 +257,8 @@ class TestSkillComposer:
     def test_get_skill_content(self, tmp_knowledge: Path) -> None:
         """Test getting individual skill content."""
         ks = KnowledgeStore(str(tmp_knowledge))
-        skill_dir = tmp_knowledge / "skills" / "test_skill"
-        skill_dir.mkdir(parents=True)
+        skill_dir = tmp_knowledge.parent / "skills" / "test_skill"
+        skill_dir.mkdir(parents=True, exist_ok=True)
         (skill_dir / "SKILL.md").write_text("Test content here")
         ks.add_skill("test_skill", "Test skill", path="test_skill")
 
@@ -290,7 +290,7 @@ class TestSkillComposerAdvanced:
         ks.add_skill("skillC", "Leaf skill")
 
         # Update index to add composable_with
-        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        index_path = tmp_knowledge.parent / "skills" / "_index.yaml"
         data = yaml.safe_load(index_path.read_text())
         for item in data["items"]:
             if item["name"] == "skillA":
@@ -324,7 +324,7 @@ class TestSkillComposerAdvanced:
         ks.add_skill("cycleB", "Cycle B")
 
         # Create a cycle: A -> B and B -> A
-        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        index_path = tmp_knowledge.parent / "skills" / "_index.yaml"
         data = yaml.safe_load(index_path.read_text())
         for item in data["items"]:
             if item["name"] == "cycleA":
@@ -346,7 +346,7 @@ class TestSkillComposerAdvanced:
         ks.add_skill("comp1", "Compatible 1")
         ks.add_skill("comp2", "Compatible 2")
 
-        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        index_path = tmp_knowledge.parent / "skills" / "_index.yaml"
         data = yaml.safe_load(index_path.read_text())
         for item in data["items"]:
             if item["name"] == "comp1":
@@ -381,7 +381,7 @@ class TestSkillComposerAdvanced:
         ks.add_skill("mix2", "Mix 2")
         ks.add_skill("mix3", "Mix 3")
 
-        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        index_path = tmp_knowledge.parent / "skills" / "_index.yaml"
         data = yaml.safe_load(index_path.read_text())
         for item in data["items"]:
             if item["name"] == "mix1":
@@ -405,19 +405,19 @@ class TestSkillComposerAdvanced:
         ks = KnowledgeStore(str(tmp_knowledge))
 
         # Create skills with SKILL.md
-        skill1_dir = tmp_knowledge / "skills" / "phase_skill1"
-        skill1_dir.mkdir(parents=True)
+        skill1_dir = tmp_knowledge.parent / "skills" / "phase_skill1"
+        skill1_dir.mkdir(parents=True, exist_ok=True)
         (skill1_dir / "SKILL.md").write_text("Phase skill 1 content")
 
-        skill2_dir = tmp_knowledge / "skills" / "phase_skill2"
-        skill2_dir.mkdir(parents=True)
+        skill2_dir = tmp_knowledge.parent / "skills" / "phase_skill2"
+        skill2_dir.mkdir(parents=True, exist_ok=True)
         (skill2_dir / "SKILL.md").write_text("Phase skill 2 content")
 
         ks.add_skill("phase_skill1", "Phase skill 1", path="phase_skill1")
         ks.add_skill("phase_skill2", "Phase skill 2", path="phase_skill2")
 
         # Write an _index.yaml with workflow section
-        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        index_path = tmp_knowledge.parent / "skills" / "_index.yaml"
         data = yaml.safe_load(index_path.read_text())
         data["workflow"] = {
             "test_phase": ["phase_skill1", "phase_skill2"],
@@ -435,7 +435,7 @@ class TestSkillComposerAdvanced:
         ks = KnowledgeStore(str(tmp_knowledge))
 
         # Write an _index.yaml with workflow section
-        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        index_path = tmp_knowledge.parent / "skills" / "_index.yaml"
         data = yaml.safe_load(index_path.read_text())
         data["workflow"] = {"existing_phase": ["some_skill"]}
         with open(index_path, "w") as f:
@@ -449,12 +449,12 @@ class TestSkillComposerAdvanced:
         """compose with max_tokens=None includes all skills."""
         ks = KnowledgeStore(str(tmp_knowledge))
 
-        skill1_dir = tmp_knowledge / "skills" / "budget1"
-        skill1_dir.mkdir(parents=True)
+        skill1_dir = tmp_knowledge.parent / "skills" / "budget1"
+        skill1_dir.mkdir(parents=True, exist_ok=True)
         (skill1_dir / "SKILL.md").write_text("Content for budget skill 1")
 
-        skill2_dir = tmp_knowledge / "skills" / "budget2"
-        skill2_dir.mkdir(parents=True)
+        skill2_dir = tmp_knowledge.parent / "skills" / "budget2"
+        skill2_dir.mkdir(parents=True, exist_ok=True)
         (skill2_dir / "SKILL.md").write_text("Content for budget skill 2")
 
         ks.add_skill("budget1", "Budget 1", path="budget1")
@@ -470,12 +470,12 @@ class TestSkillComposerAdvanced:
         """compose with very small max_tokens truncates and shows warning."""
         ks = KnowledgeStore(str(tmp_knowledge))
 
-        skill1_dir = tmp_knowledge / "skills" / "trunc1"
-        skill1_dir.mkdir(parents=True)
+        skill1_dir = tmp_knowledge.parent / "skills" / "trunc1"
+        skill1_dir.mkdir(parents=True, exist_ok=True)
         (skill1_dir / "SKILL.md").write_text("Short")
 
-        skill2_dir = tmp_knowledge / "skills" / "trunc2"
-        skill2_dir.mkdir(parents=True)
+        skill2_dir = tmp_knowledge.parent / "skills" / "trunc2"
+        skill2_dir.mkdir(parents=True, exist_ok=True)
         (skill2_dir / "SKILL.md").write_text("A" * 1000)
 
         ks.add_skill("trunc1", "Truncate 1", path="trunc1")
@@ -492,12 +492,12 @@ class TestSkillComposerAdvanced:
         """Conflict warnings are returned but compose still works."""
         ks = KnowledgeStore(str(tmp_knowledge))
 
-        skill1_dir = tmp_knowledge / "skills" / "conflict1"
-        skill1_dir.mkdir(parents=True)
+        skill1_dir = tmp_knowledge.parent / "skills" / "conflict1"
+        skill1_dir.mkdir(parents=True, exist_ok=True)
         (skill1_dir / "SKILL.md").write_text("Conflict skill 1")
 
-        skill2_dir = tmp_knowledge / "skills" / "conflict2"
-        skill2_dir.mkdir(parents=True)
+        skill2_dir = tmp_knowledge.parent / "skills" / "conflict2"
+        skill2_dir.mkdir(parents=True, exist_ok=True)
         (skill2_dir / "SKILL.md").write_text("Conflict skill 2")
 
         ks.add_skill("conflict1", "Conflict 1", path="conflict1")
@@ -527,7 +527,7 @@ class TestKnowledgeFiles:
 
     def test_skills_index_exists(self, kernel_root: Path) -> None:
         """Test that skills/_index.yaml exists and is valid."""
-        path = kernel_root / "knowledge" / "skills" / "_index.yaml"
+        path = kernel_root / "skills" / "_index.yaml"
         assert path.exists()
         data = yaml.safe_load(path.read_text())
         assert "items" in data
@@ -561,7 +561,7 @@ class TestSkillPathResolution:
         At least 20 of 28 skills should resolve to actual SKILL.md files.
         Skills with paths that do not resolve are reported as warnings.
         """
-        index_path = kernel_root / "knowledge" / "skills" / "_index.yaml"
+        index_path = kernel_root / "skills" / "_index.yaml"
         data = yaml.safe_load(index_path.read_text())
         items = data.get("items", [])
         assert len(items) == 28, f"Expected 28 skills in index, found {len(items)}"
@@ -573,25 +573,23 @@ class TestSkillPathResolution:
             name = skill["name"]
             path = skill.get("path", "")
 
-            # Try knowledge/skills/{path}/SKILL.md
-            option1 = kernel_root / "knowledge" / "skills" / path / "SKILL.md"
-            # Try {path}/SKILL.md relative to repo root
-            option2 = kernel_root / path / "SKILL.md"
+            # Skills are now under skills/{path}/SKILL.md
+            skill_md = kernel_root / "skills" / path / "SKILL.md"
 
-            if option1.exists() or option2.exists():
+            if skill_md.exists():
                 resolved.append(name)
             else:
                 unresolved.append(name)
 
-        # At least 20 of 27 should resolve
+        # At least 20 of 28 should resolve
         assert len(resolved) >= 20, (
-            f"Only {len(resolved)}/27 skills resolved. "
+            f"Only {len(resolved)}/28 skills resolved. "
             f"Unresolved: {unresolved}"
         )
 
     def test_skill_index_has_required_fields(self, kernel_root: Path) -> None:
         """Test that all skill entries have name, path, and description."""
-        index_path = kernel_root / "knowledge" / "skills" / "_index.yaml"
+        index_path = kernel_root / "skills" / "_index.yaml"
         data = yaml.safe_load(index_path.read_text())
         items = data.get("items", [])
 

@@ -98,9 +98,9 @@ class SetupChecker:
         Returns:
             Tuple of (passed, message).
         """
-        index_path = self.root / "knowledge" / "skills" / "_index.yaml"
+        index_path = self.root / "skills" / "_index.yaml"
         if not index_path.exists():
-            return (False, "knowledge/skills/_index.yaml not found")
+            return (False, "skills/_index.yaml not found")
         try:
             import yaml
             with open(index_path, "r", encoding="utf-8") as f:
@@ -115,7 +115,7 @@ class SetupChecker:
                 path_str = item.get("path", "")
                 if not path_str:
                     continue
-                skill_dir = self.root / path_str
+                skill_dir = self.root / "skills" / path_str
                 if not skill_dir.is_dir():
                     missing.append(path_str)
             if not missing:

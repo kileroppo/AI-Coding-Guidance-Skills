@@ -132,8 +132,8 @@ The kernel draws on two philosophical traditions to guide its behavior:
 
 ### Adding a New Skill
 
-1. Create a directory under `knowledge/skills/` with a `SKILL.md` file describing the skill behavior and prompts.
-2. Register it in `knowledge/skills/_index.yaml` with name, path, description, tags, and composable_with fields.
+1. Create a directory under `skills/` with a `SKILL.md` file describing the skill behavior and prompts.
+2. Register it in `skills/_index.yaml` with name, path, description, tags, and composable_with fields.
 3. Use the `write-a-skill` meta-skill to scaffold the structure: run with `--skills write-a-skill`.
 
 ### Running Tests
