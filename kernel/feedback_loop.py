@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from kernel.evolution.engine import EvolutionEngine
+from kernel.evolution.historian import EvolutionHistorian
 from kernel.evolution.metrics import EvolutionMetrics
 from kernel.reflector import Reflector
 
@@ -32,6 +33,7 @@ class FeedbackLoop:
         evolution_engine: EvolutionEngine,
         metrics: EvolutionMetrics,
         max_applies_per_cycle: int = 1,
+        history_file: Path | None = None,
     ) -> None:
         """Initialize the feedback loop.
 
@@ -41,6 +43,8 @@ class FeedbackLoop:
             evolution_engine: EvolutionEngine for applying changes.
             metrics: EvolutionMetrics for tracking performance.
             max_applies_per_cycle: Max proposals to apply per cycle (default 1).
+            history_file: Path to evolution history.jsonl. If provided,
+                          creates an EvolutionHistorian for analysis and pruning.
         """
         self.memory_dir = Path(memory_dir)
         self.reflector = reflector
@@ -48,6 +52,9 @@ class FeedbackLoop:
         self.metrics = metrics
         self.threshold = 0.7
         self.max_applies_per_cycle = max_applies_per_cycle
+        self.historian: EvolutionHistorian | None = None
+        if history_file is not None:
+            self.historian = EvolutionHistorian(history_file)
 
     def run_cycle(self, iteration_data: dict) -> dict:
         """Run a full feedback cycle after an iteration.
@@ -56,8 +63,10 @@ class FeedbackLoop:
         2. Record the reflection
         3. Read recent reflections (last 10)
         4. Generate evolution proposals
+        4b. Adjust proposal confidence based on historical effectiveness
         5. Apply proposals with confidence > threshold
         6. Record metrics
+        7. Auto-prune history if historian is available
 
         Args:
             iteration_data: Dict with keys: node, result, errors, iteration.
@@ -78,6 +87,16 @@ class FeedbackLoop:
         # 4. Generate evolution proposals
         proposals = self.reflector.propose_evolution(recent)
 
+        # 4b. Adjust confidence based on historical effectiveness
+        if self.historian:
+            effectiveness = self.historian.analyze_effectiveness()
+            for proposal in proposals:
+                ptype = proposal.get("type", "")
+                if ptype in effectiveness:
+                    if effectiveness[ptype]["stick_rate"] < 0.3:
+                        current = proposal.get("confidence_score", 0.0)
+                        proposal["confidence_score"] = max(0.0, current - 0.3)
+
         # 5. Apply confident proposals (capped per cycle)
         applied = self.evolution_engine.apply_if_confident(
             proposals, self.threshold, max_applies=self.max_applies_per_cycle
@@ -87,6 +106,10 @@ class FeedbackLoop:
         node_id = iteration_data.get("node", "unknown")
         success = reflection.get("success", False)
         self.metrics.record_iteration(node_id, success=success)
+
+        # 7. Auto-prune history
+        if self.historian:
+            self.historian.prune_history(max_entries=500)
 
         proposals_skipped = len(proposals) - len(applied)
 
