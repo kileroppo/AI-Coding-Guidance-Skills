@@ -66,15 +66,19 @@ class EvolutionEngine:
             "status": "proposed",
         }
 
-    def validate_change(self, change: dict) -> tuple[bool, str]:
+    def validate_change(self, change: dict, state: dict | None = None) -> tuple[bool, str]:
         """Validate against constitution.
 
         MUST REJECT changes that touch protected paths. Also rejects
         invalid change types. All paths are normalized before comparison
         to prevent bypass via variants like ./kernel/BOOT.md or kernel//BOOT.md.
 
+        If state is provided and contains user_owned_files, also rejects
+        changes targeting user-owned files.
+
         Args:
             change: The change proposal dict.
+            state: Optional state dict with user_owned_files list.
 
         Returns:
             Tuple of (is_valid, reason_string).
@@ -94,6 +98,17 @@ class EvolutionEngine:
             normalized = os.path.normpath(path_value)
             if normalized in IMMUTABLE_FILES:
                 return (False, f"Cannot modify protected file: {path_value}")
+
+        # Check if change targets user-owned files
+        if state is not None:
+            user_owned = state.get("user_owned_files", [])
+            if user_owned:
+                for field in ["target_file", "path", "file", "prompt_file"]:
+                    path_value = details.get(field, "")
+                    if not path_value:
+                        continue
+                    if path_value in user_owned:
+                        return (False, "File is user-owned and cannot be modified by evolution")
 
         # For modify_prompt, check for path traversal escaping kernel/prompts/
         if change_type == "modify_prompt":
