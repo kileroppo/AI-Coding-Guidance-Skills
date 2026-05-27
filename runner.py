@@ -25,6 +25,7 @@ Mode 3 (Real AI execution via subprocess): The runner assembles context from
 """
 
 import argparse
+import json
 import os
 import re
 import shlex
@@ -43,6 +44,7 @@ from kernel.feedback_loop import FeedbackLoop
 from kernel.graph_executor import GraphExecutor
 from kernel.reflector import Reflector
 from kernel.skill_selector import select_skills_for_goal
+from kernel.adapters.ralph_adapter import RalphAdapter
 from knowledge.store import KnowledgeStore
 from memory.state_manager import StateManager
 
@@ -120,6 +122,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["continue", "skip", "backoff"],
         default="continue",
         help="Retry strategy on failure: continue (retry same), skip (advance to next), backoff (exponential wait)",
+    )
+    parser.add_argument(
+        "--execution-mode",
+        type=str,
+        choices=["kernel", "ralph"],
+        default="kernel",
+        help="Execution mode: kernel (default) or ralph (exports prd.json after planning)",
     )
     return parser.parse_args(argv)
 
@@ -241,6 +250,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
 
     state_mgr.state["max_iterations"] = args.max_iterations
     state_mgr.state["status"] = "running"
+
+    # Set execution mode
+    state_mgr.set_execution_mode(args.execution_mode)
 
     # Handle --generate-prompt: assemble and print context, then exit
     if args.generate_prompt:
@@ -528,6 +540,22 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     # Mark as complete if we finished the loop
     if state_mgr.state.get("status") == "running":
         state_mgr.state["status"] = "complete"
+
+    # Export to prd.json if execution mode is ralph
+    if state_mgr.get_execution_mode() == "ralph" and not args.dry_run:
+        adapter = RalphAdapter()
+        tasks_path = state_mgr.get_tasks_path()
+        if tasks_path.exists():
+            with open(tasks_path, "r", encoding="utf-8") as f:
+                tasks_data = yaml.safe_load(f) or {}
+            tasks = tasks_data.get("tasks", [])
+        else:
+            tasks = []
+        goal = state_mgr.state.get("goal", "")
+        prd = adapter.export_to_prd_json(tasks, goal)
+        prd_path = Path(memory_dir) / "prd.json"
+        with open(prd_path, "w", encoding="utf-8") as f:
+            json.dump(prd, f, indent=2)
 
     if not args.dry_run:
         state_mgr.save_state()

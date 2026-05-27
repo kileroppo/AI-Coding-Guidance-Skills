@@ -290,3 +290,43 @@ class TestRetryTracking:
         from memory.state_manager import DEFAULT_STATE
         assert "progress_history" in DEFAULT_STATE
         assert DEFAULT_STATE["progress_history"] == []
+
+
+class TestExecutionMode:
+    """Tests for execution_mode support in StateManager."""
+
+    def test_execution_mode_in_default_state(self) -> None:
+        """Test that execution_mode is in DEFAULT_STATE."""
+        from memory.state_manager import DEFAULT_STATE
+        assert "execution_mode" in DEFAULT_STATE
+        assert DEFAULT_STATE["execution_mode"] == "kernel"
+
+    def test_get_execution_mode_default(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test that get_execution_mode returns 'kernel' by default."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        assert sm.get_execution_mode() == "kernel"
+
+    def test_set_execution_mode_kernel(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test setting execution_mode to 'kernel'."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        sm.set_execution_mode("kernel")
+        assert sm.state["execution_mode"] == "kernel"
+
+    def test_set_execution_mode_ralph(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test setting execution_mode to 'ralph'."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        sm.set_execution_mode("ralph")
+        assert sm.state["execution_mode"] == "ralph"
+        assert sm.get_execution_mode() == "ralph"
+
+    def test_set_execution_mode_invalid_raises(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test that setting an invalid mode raises ValueError."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        with pytest.raises(ValueError, match="Invalid execution_mode"):
+            sm.set_execution_mode("invalid")
+
+    def test_set_execution_mode_empty_raises(self, tmp_state: Path, tmp_memory: Path) -> None:
+        """Test that setting empty string raises ValueError."""
+        sm = StateManager(str(tmp_state), str(tmp_memory))
+        with pytest.raises(ValueError):
+            sm.set_execution_mode("")

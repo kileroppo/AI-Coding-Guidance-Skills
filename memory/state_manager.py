@@ -29,6 +29,7 @@ DEFAULT_STATE = {
     },
     "node_visits": {},
     "progress_history": [],
+    "execution_mode": "kernel",
 }
 
 
@@ -167,6 +168,29 @@ class StateManager:
         project_root = self.state_path.parent.parent
         workspace_dir = project_root / "workspace" / project_name
         workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_execution_mode(self) -> str:
+        """Return the current execution mode.
+
+        Returns:
+            The execution mode string ('kernel' or 'ralph').
+        """
+        return self.state.get("execution_mode", "kernel")
+
+    def set_execution_mode(self, mode: str) -> None:
+        """Set the execution mode.
+
+        Args:
+            mode: The execution mode to set ('kernel' or 'ralph').
+
+        Raises:
+            ValueError: If mode is not 'kernel' or 'ralph'.
+        """
+        if mode not in ("kernel", "ralph"):
+            raise ValueError(
+                f"Invalid execution_mode '{mode}': must be 'kernel' or 'ralph'"
+            )
+        self.state["execution_mode"] = mode
 
     def get_workspace(self) -> Path:
         """Return the workspace Path resolved from the project root.
