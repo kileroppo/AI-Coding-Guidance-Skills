@@ -56,6 +56,10 @@ task and expected output format for this iteration.
 Perform the task described in your role prompt. Use the context from memory/
 (current_goal.md, plan.md, progress.yaml) to inform your work.
 
+Generated code goes in the workspace directory specified in state.yaml
+workspace_path. You may NEVER write kernel system files except where explicitly
+allowed by your role prompt.
+
 Your output MUST include a `TRANSITION: <condition>` line. See
 `kernel/contracts/output_format.md` for the full output format specification.
 

@@ -25,6 +25,7 @@ Mode 3 (Real AI execution via subprocess): The runner assembles context from
 """
 
 import argparse
+import re
 import shlex
 import subprocess
 import sys
@@ -94,6 +95,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Output assembled prompt to stdout and exit",
     )
+    parser.add_argument(
+        "--workspace",
+        type=str,
+        default=None,
+        help="Manual workspace project name override (default: derived from goal)",
+    )
     return parser.parse_args(argv)
 
 
@@ -111,6 +118,23 @@ def _parse_transition(output: str) -> str | None:
         if stripped.startswith("TRANSITION:"):
             return stripped[len("TRANSITION:"):].strip()
     return None
+
+
+def _sanitize_project_name(goal: str) -> str:
+    """Derive a sanitized project name from a goal string.
+
+    Lowercases the goal, replaces spaces with hyphens, removes special
+    characters, and truncates to 50 characters.
+
+    Args:
+        goal: The goal string to sanitize.
+
+    Returns:
+        A filesystem-safe project name.
+    """
+    name = goal.lower().replace(" ", "-")
+    name = re.sub(r"[^a-z0-9-]", "", name)
+    return name[:50]
 
 
 def main(argv: list[str] | None = None) -> dict[str, Any]:
@@ -141,6 +165,17 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             state_mgr.state["goal"] = args.goal
         else:
             state_mgr.set_goal(args.goal)
+
+    # Initialize workspace
+    if args.workspace:
+        project_name = args.workspace
+    else:
+        goal = state_mgr.state.get("goal", "")
+        project_name = _sanitize_project_name(goal) if goal else ""
+    if project_name and not args.dry_run:
+        state_mgr.set_workspace(project_name)
+    elif project_name and args.dry_run:
+        state_mgr.state["workspace_path"] = f"./workspace/{project_name}/"
 
     # Reset node_visits on resume so stale counts don't trigger false stuck detection
     if args.resume:

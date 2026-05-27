@@ -47,3 +47,11 @@ The kernel must never skip, disable, or work around these checks.
 The kernel must operate within the bounds of available resources. API rate limits,
 disk space, memory limits, and compute budgets must be respected. Aggressive
 retry loops and resource exhaustion are prohibited.
+
+## Article IX: Workspace Protection
+**Generated code is isolated in workspace/.**
+The AI agent must never write generated project files outside the workspace
+directory. Kernel system files (kernel/, memory/, knowledge/) are protected
+from generated code writes. The workspace directory is specified in state.yaml
+workspace_path and is the only valid target for generated source code, tests,
+and project files.

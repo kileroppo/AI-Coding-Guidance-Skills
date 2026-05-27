@@ -18,6 +18,7 @@ DEFAULT_STATE = {
     "iteration_count": 0,
     "max_iterations": 30,
     "goal": "",
+    "workspace_path": "",
     "status": "idle",
     "last_updated": "",
     "errors": [],
@@ -152,6 +153,34 @@ class StateManager:
         goal_path = self.memory_dir / "current_goal.md"
         with open(goal_path, "w", encoding="utf-8") as f:
             f.write(f"# Current Goal\n\n{goal}\n")
+
+    def set_workspace(self, project_name: str) -> None:
+        """Set workspace_path in state and create the workspace directory.
+
+        Args:
+            project_name: Sanitized project name for the workspace subdirectory.
+        """
+        workspace_rel = f"./workspace/{project_name}/"
+        self.state["workspace_path"] = workspace_rel
+        # Derive workspace directory relative to the project root
+        # state_path is kernel/state.yaml, so parent.parent is the project root
+        project_root = self.state_path.parent.parent
+        workspace_dir = project_root / "workspace" / project_name
+        workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_workspace(self) -> Path:
+        """Return the workspace Path resolved from the project root.
+
+        Returns:
+            Path to the workspace directory.
+        """
+        workspace_rel = self.state.get("workspace_path", "")
+        project_root = self.state_path.parent.parent
+        if not workspace_rel:
+            return project_root / "workspace"
+        # Strip leading ./ if present
+        clean = workspace_rel.lstrip("./")
+        return project_root / clean
 
     def is_complete(self) -> bool:
         """Check if execution is complete.

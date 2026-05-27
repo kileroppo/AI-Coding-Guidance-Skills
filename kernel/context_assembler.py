@@ -114,6 +114,9 @@ class ContextAssembler:
         lines.append(f"Iteration: {state.get('iteration_count', 0)}")
         lines.append(f"Max Iterations: {state.get('max_iterations', 30)}")
         lines.append(f"Status: {state.get('status', 'unknown')}")
+        workspace_path = state.get("workspace_path", "")
+        if workspace_path:
+            lines.append(f"Workspace: {workspace_path}")
         errors = state.get("errors", [])
         if errors:
             lines.append(f"Errors: {errors}")

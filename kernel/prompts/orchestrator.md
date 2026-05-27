@@ -27,6 +27,11 @@ execution cycle.
 
 5. **Decide**: Based on the above, determine if we can proceed to planning.
 
+6. **Initialize Workspace**: After loading the goal, set `workspace_path` in
+   state.yaml based on a sanitized version of the goal (lowercase, spaces to
+   hyphens, special characters removed, truncated to 50 chars). All generated
+   code will be written to this workspace directory.
+
 ## Transition Conditions
 
 - **goal_loaded**: A valid goal exists and context is initialized. Transition to `plan`.
