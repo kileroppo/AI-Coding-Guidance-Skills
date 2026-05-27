@@ -183,8 +183,14 @@ class EvolutionEngine:
                     self.graph_executor.save_graph()
 
             elif change_type == "add_skill":
-                # This is handled by KnowledgeStore, just log it
-                pass
+                from kernel.skill_factory import SkillFactory
+                skill_name = details.get("name", "")
+                skill_description = details.get("description", "")
+                skill_content = details.get("content", "")
+                skill_tags = details.get("tags", [])
+                knowledge_dir = str(self.kernel_dir.parent / "knowledge")
+                factory = SkillFactory(knowledge_dir)
+                factory.create_skill(skill_name, skill_description, skill_content, skill_tags)
 
             elif change_type == "add_rule":
                 # This is handled by KnowledgeStore, just log it
