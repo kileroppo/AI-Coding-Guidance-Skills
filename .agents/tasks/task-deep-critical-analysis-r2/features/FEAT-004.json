@@ -2,7 +2,7 @@
   "id": "FEAT-004",
   "type": "feat",
   "description": "ROUND 4 - Skills Are Never Actually Loaded: The skill system has 27 registered skills with compose_for_phase() infrastructure but NOTHING populates state.context.skills_loaded. The orchestrator does not select skills, and context_assembler only loads descriptions (not actual SKILL.md content). Fix by adding skill auto-selection and proper content loading.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Add select_skills_for_goal(goal: str, available_skills: list[dict]) -> list[str] function to kernel/skill_selector.py (new file). This analyzes goal text against skill tags/descriptions using keyword matching: extract keywords from goal, match against skill tags and description words, return top N skills (default 5) sorted by relevance score.",
     "Update kernel/prompts/orchestrator.md to include: 'After loading the goal, select relevant skills using tag matching and write them to state.context.skills_loaded'",
@@ -25,5 +25,5 @@
     "python3.12 -m pytest tests/ --cov --cov-fail-under=90 -q"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 405 tests pass at 98.39% coverage. Created kernel/skill_selector.py with select_skills_for_goal function using tag-weighted keyword matching (tags 3x, description 1x). Updated runner.py with --skills CLI flag and auto-selection after workspace init. Updated context_assembler._load_skills to use SkillComposer.compose() with fallback to descriptions. Updated orchestrator.md with skill selection instruction. Added 20 new tests in tests/test_skill_selector.py covering all acceptance criteria."
 }
