@@ -42,6 +42,7 @@ import yaml
 from kernel.bootstrap import BootstrapGenerator
 from kernel.context_assembler import ContextAssembler
 from kernel.contracts import OutputContractValidator
+from kernel.error_messages import format_error
 from kernel.evolution.engine import EvolutionEngine
 from kernel.evolution.metrics import EvolutionMetrics
 from kernel.feedback_loop import FeedbackLoop
@@ -456,6 +457,15 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                         ),
                         file=sys.stderr,
                     )
+                    print(
+                        format_error(
+                            "stuck_node",
+                            node=stuck_node,
+                            visits=visits,
+                            max_retries=max_retries_map.get(stuck_node, 5),
+                        ),
+                        file=sys.stderr,
+                    )
                     break
                 continue
 
@@ -520,12 +530,27 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     timeout_detail += f" | stderr: {e.stderr[:200]}"
                 state_mgr.state.setdefault("errors", []).append(timeout_detail)
                 state_mgr.trim_errors()
+                print(
+                    format_error(
+                        "timeout",
+                        seconds=str(args.timeout),
+                        node=node["id"],
+                    ),
+                    file=sys.stderr,
+                )
                 # Stay on same node - do not advance
                 continue
             except FileNotFoundError:
                 print(
                     f"Error: AI command not found: '{shlex.split(args.ai_command)[0]}'. "
                     f"Please verify the command is installed and in your PATH.",
+                    file=sys.stderr,
+                )
+                print(
+                    format_error(
+                        "command_not_found",
+                        cmd=shlex.split(args.ai_command)[0],
+                    ),
                     file=sys.stderr,
                 )
                 state_mgr.state["status"] = "error"
