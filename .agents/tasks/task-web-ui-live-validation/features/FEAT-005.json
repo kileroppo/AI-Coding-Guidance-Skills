@@ -2,7 +2,7 @@
   "id": "FEAT-005",
   "type": "feat",
   "description": "User Scenarios + Documentation + Final Integration Stress Test. Create example scenarios with validation scripts, comprehensive docs, and a stress test that runs 100 rapid iterations to verify no memory leaks or unbounded growth.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create examples/ directory at project root",
     "Create examples/todo_app/goal.md with goal text 'Build a Python Flask todo app with REST API and SQLite'",
@@ -34,5 +34,5 @@
     "python -m pytest tests/ --cov --cov-fail-under=90 -q"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 1018 tests pass (23 new: 12 in test_examples.py, 11 in test_stress.py). Coverage 98.52%. Stress tests validated: metrics window bounded at 10, historian prunes at 500, errors capped at 10, progress_history capped at 20. Note: historian stick_rate can be negative when reverted > applied (not a bug). All 3 example scenarios pass dry-run. Docs all exceed 500 words."
 }
