@@ -6,11 +6,15 @@ including current node, iteration count, goals, and error tracking.
 
 import copy
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from kernel.atomic_write import atomic_write
+from kernel.file_lock import FileLock
 
 
 DEFAULT_STATE = {
@@ -74,11 +78,61 @@ class StateManager:
         return data
 
     def save_state(self) -> None:
-        """Write current state to state.yaml."""
+        """Write current state to state.yaml using atomic write."""
         self.state["last_updated"] = datetime.now(timezone.utc).isoformat()
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.state_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(self.state, f, default_flow_style=False, allow_unicode=True)
+        yaml_content = yaml.safe_dump(
+            self.state, default_flow_style=False, allow_unicode=True
+        )
+        atomic_write(self.state_path, yaml_content)
+
+    def _get_lock_path(self) -> Path:
+        """Return the lock file path for state.yaml.
+
+        Returns:
+            Path with .lock suffix appended to state_path.
+        """
+        return self.state_path.with_suffix(".yaml.lock")
+
+    def check_runner_lock(self) -> tuple[bool, str]:
+        """Check if a runner lock exists and is not stale.
+
+        Returns:
+            Tuple of (is_locked, message). If locked and fresh, returns
+            (True, "Runner already active since {timestamp}").
+            If not locked or stale, returns (False, "").
+        """
+        runner_lock_path = self.memory_dir / "runner.lock"
+        if not runner_lock_path.exists():
+            return (False, "")
+        if FileLock.is_stale(runner_lock_path, max_age_seconds=600):
+            return (False, "")
+        try:
+            with open(runner_lock_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            timestamp = data.get("timestamp", "unknown")
+            return (True, f"Runner already active since {timestamp}")
+        except (json.JSONDecodeError, OSError):
+            return (False, "")
+
+    def acquire_runner_lock(self) -> None:
+        """Create runner.lock in the memory directory."""
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
+        runner_lock_path = self.memory_dir / "runner.lock"
+        lock_info = {
+            "pid": os.getpid(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "host": os.uname().nodename,
+        }
+        with open(runner_lock_path, "w", encoding="utf-8") as f:
+            json.dump(lock_info, f)
+
+    def release_runner_lock(self) -> None:
+        """Remove runner.lock from the memory directory."""
+        runner_lock_path = self.memory_dir / "runner.lock"
+        try:
+            os.unlink(str(runner_lock_path))
+        except FileNotFoundError:
+            pass
 
     def get_state(self) -> dict[str, Any]:
         """Return current state dict.
@@ -102,7 +156,7 @@ class StateManager:
         self.state["last_updated"] = datetime.now(timezone.utc).isoformat()
 
     def record_decision(self, decision: dict) -> None:
-        """Append JSON line to decisions.jsonl.
+        """Append JSON line to decisions.jsonl with advisory locking.
 
         Args:
             decision: Decision dict to record.
@@ -110,11 +164,13 @@ class StateManager:
         decision.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
         self.memory_dir.mkdir(parents=True, exist_ok=True)
         filepath = self.memory_dir / "decisions.jsonl"
-        with open(filepath, "a", encoding="utf-8") as f:
-            f.write(json.dumps(decision) + "\n")
+        lock_path = filepath.with_suffix(".jsonl.lock")
+        with FileLock(lock_path, timeout=5.0):
+            with open(filepath, "a", encoding="utf-8") as f:
+                f.write(json.dumps(decision) + "\n")
 
     def record_reflection(self, reflection: dict) -> None:
-        """Append JSON line to reflections.jsonl.
+        """Append JSON line to reflections.jsonl with advisory locking.
 
         Args:
             reflection: Reflection dict to record.
@@ -122,8 +178,10 @@ class StateManager:
         reflection.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
         self.memory_dir.mkdir(parents=True, exist_ok=True)
         filepath = self.memory_dir / "reflections.jsonl"
-        with open(filepath, "a", encoding="utf-8") as f:
-            f.write(json.dumps(reflection) + "\n")
+        lock_path = filepath.with_suffix(".jsonl.lock")
+        with FileLock(lock_path, timeout=5.0):
+            with open(filepath, "a", encoding="utf-8") as f:
+                f.write(json.dumps(reflection) + "\n")
 
     def update_progress(self, tasks_total: int, tasks_done: int) -> None:
         """Update progress.yaml.
