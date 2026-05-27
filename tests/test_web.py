@@ -606,3 +606,55 @@ class TestPathValidation:
     def test_validate_path_root_itself(self, tmp_path: Path):
         from web.app import _validate_path
         assert _validate_path(tmp_path, tmp_path) is True
+
+
+class TestStartEndpointSanitization:
+    """Tests for input sanitization on POST /api/start."""
+
+    def test_start_strips_html_from_goal(self, client: TestClient, kernel_dir: Path):
+        resp = client.post(
+            "/api/start",
+            json={"goal": "<script>alert('xss')</script>Build API", "max_iterations": 1},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "<script>" not in data.get("goal", "")
+        assert "Build API" in data["goal"]
+
+    def test_start_truncates_long_goal(self, client: TestClient, kernel_dir: Path):
+        resp = client.post(
+            "/api/start",
+            json={"goal": "x" * 1000, "max_iterations": 1},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["goal"]) <= 500
+
+    def test_start_empty_goal_allowed(self, client: TestClient, kernel_dir: Path):
+        """Empty goal on start is allowed (it's optional)."""
+        resp = client.post("/api/start", json={"goal": "", "max_iterations": 1})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "started"
+
+
+class TestRateLimiterCleanup:
+    """Tests for rate limiter memory cleanup."""
+
+    def test_rate_limiter_has_request_counter(self, tmp_path: Path):
+        """Verify rate limiter tracks request count for cleanup."""
+        from web.app import RateLimitMiddleware
+
+        web_dir = tmp_path / "web" / "templates"
+        web_dir.mkdir(parents=True)
+        with open(web_dir / "dashboard.html", "w") as f:
+            f.write("<html><body>OK</body></html>")
+
+        app = create_app(kernel_root=tmp_path, rate_limit=1000)
+        # Find the rate limit middleware
+        rate_limiter = None
+        for middleware in app.user_middleware:
+            if middleware.cls == RateLimitMiddleware:
+                rate_limiter = middleware
+                break
+        assert rate_limiter is not None

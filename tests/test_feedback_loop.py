@@ -679,3 +679,71 @@ class TestContextAssemblerIncludesHistoryAndReflections:
         # Should not include these sections when files are missing
         assert "=== EVOLUTION HISTORY ===" not in result
         assert "=== RECENT REFLECTIONS ===" not in result
+
+
+class TestSkillAccumulatorIntegration:
+    """Tests for SkillAccumulator integration with FeedbackLoop."""
+
+    def test_skill_accumulator_called_on_project_complete(self, feedback_setup) -> None:
+        """Test that skill_accumulator.analyze_completion is called when project completes."""
+        loop, memory_dir, _, _, _ = feedback_setup
+
+        mock_accumulator = MagicMock()
+        mock_accumulator.analyze_completion.return_value = []
+        loop.skill_accumulator = mock_accumulator
+
+        iteration_data = {
+            "node": "review",
+            "result": "success",
+            "errors": [],
+            "iteration": 10,
+            "project_complete": True,
+            "goal": "Build a calculator",
+            "skills_used": ["python-api"],
+        }
+
+        loop.run_cycle(iteration_data)
+
+        mock_accumulator.analyze_completion.assert_called_once()
+        call_args = mock_accumulator.analyze_completion.call_args[0][0]
+        assert call_args["goal"] == "Build a calculator"
+        assert call_args["skills_used"] == ["python-api"]
+
+    def test_skill_accumulator_not_called_without_project_complete(
+        self, feedback_setup
+    ) -> None:
+        """Test that skill_accumulator is NOT called for normal iterations."""
+        loop, memory_dir, _, _, _ = feedback_setup
+
+        mock_accumulator = MagicMock()
+        loop.skill_accumulator = mock_accumulator
+
+        iteration_data = {
+            "node": "code",
+            "result": "success",
+            "errors": [],
+            "iteration": 5,
+        }
+
+        loop.run_cycle(iteration_data)
+
+        mock_accumulator.analyze_completion.assert_not_called()
+
+    def test_feedback_loop_works_without_skill_accumulator(
+        self, feedback_setup
+    ) -> None:
+        """Test that FeedbackLoop works fine when no skill_accumulator is provided."""
+        loop, _, _, _, _ = feedback_setup
+        assert loop.skill_accumulator is None
+
+        iteration_data = {
+            "node": "code",
+            "result": "success",
+            "errors": [],
+            "iteration": 1,
+            "project_complete": True,
+        }
+
+        # Should not raise even with project_complete=True
+        result = loop.run_cycle(iteration_data)
+        assert "reflection" in result

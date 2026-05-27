@@ -523,6 +523,14 @@ class TestScenarioFromYaml:
         This scenario has failures spread across two nodes (code and test).
         We lower the threshold to match the scenario's min_confidence
         expectation since distributed failures produce lower confidence scores.
+
+        The threshold is lowered intentionally: distributed failures across
+        multiple nodes produce lower per-node confidence scores than
+        concentrated failures on a single node (e.g. 0.35 vs 0.7). This is
+        by design - the evolution engine requires higher evidence density
+        before modifying prompts. This test verifies the mechanism still
+        triggers at appropriately lower thresholds, confirming the scoring
+        behavior is working correctly.
         """
         scenario = scenarios[2]
         assert scenario["name"] == "Full stack code-test loop"

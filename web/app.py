@@ -50,11 +50,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.requests: dict[str, list[float]] = defaultdict(list)
+        self._request_count = 0
 
     async def dispatch(self, request, call_next):
         client_ip = request.client.host if request.client else "unknown"
         now = time.time()
-        # Clean old entries
+        # Clean old entries for this IP
         self.requests[client_ip] = [
             t for t in self.requests[client_ip] if now - t < self.window_seconds
         ]
@@ -64,6 +65,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 content={"error": "Rate limit exceeded"},
             )
         self.requests[client_ip].append(now)
+
+        # Periodic cleanup: every 100 requests, purge the dict if it grows too large
+        self._request_count += 1
+        if self._request_count % 100 == 0:
+            if len(self.requests) > 10000:
+                self.requests.clear()
+
         return await call_next(request)
 
 
@@ -140,10 +148,16 @@ def create_app(kernel_root: Path | None = None, rate_limit: int = 60) -> FastAPI
             return items[-limit:]
         return items
 
+    # Startup validation: confirm kernel_root is sane
+    if not _validate_path(kernel_root, kernel_root):
+        raise ValueError(f"kernel_root path validation failed: {kernel_root}")
+
     @app.get("/", response_class=HTMLResponse)
     async def dashboard():
         """Serve the dashboard HTML page."""
         template_path = kernel_root / "web" / "templates" / "dashboard.html"
+        if not _validate_path(template_path, kernel_root):
+            return HTMLResponse(content="<h1>Invalid template path</h1>", status_code=403)
         try:
             content = template_path.read_text(encoding="utf-8")
             return HTMLResponse(content=content)
@@ -319,14 +333,23 @@ def create_app(kernel_root: Path | None = None, rate_limit: int = 60) -> FastAPI
 
     @app.post("/api/start")
     async def start_execution(request: StartRequest):
-        """Start kernel execution in a background thread."""
+        """Start kernel execution in a background thread.
+
+        NOTE: No authentication is enforced on this endpoint. This is a
+        development dashboard intended for localhost access. For production
+        deployments, configure an auth proxy or middleware. See .env.example.
+        """
         if app.state.running:
             return {"status": "already_running"}
 
         app.state.stop_flag.clear()
         app.state.running = True
 
-        goal = request.goal.strip()
+        # Apply the same sanitization as /api/goal
+        goal = re.sub(r"<[^>]+>", "", request.goal)
+        goal = goal.strip()
+        if len(goal) > 500:
+            goal = goal[:500]
         max_iterations = request.max_iterations
 
         def _run_kernel():
@@ -375,7 +398,12 @@ def create_app(kernel_root: Path | None = None, rate_limit: int = 60) -> FastAPI
 
     @app.post("/api/stop")
     async def stop_execution():
-        """Stop kernel execution."""
+        """Stop kernel execution.
+
+        NOTE: No authentication is enforced on this endpoint. This is a
+        development dashboard intended for localhost access. For production
+        deployments, configure an auth proxy or middleware. See .env.example.
+        """
         if not app.state.running:
             return {"status": "not_running"}
         app.state.stop_flag.set()

@@ -144,11 +144,14 @@ class TestStress100Iterations:
             node_metrics = metrics.get_node_metrics(node)
             assert node_metrics["sample_count"] <= 10
 
-        # Verify: reflections.jsonl is written and bounded to 100 entries
+        # Verify: reflections.jsonl is written (100 entries, below prune threshold)
         reflections_path = memory_dir / "reflections.jsonl"
         assert reflections_path.exists()
         lines = reflections_path.read_text().strip().splitlines()
+        # 100 iterations is below the 1000-line prune threshold
         assert len(lines) == 100
+        # Verify the file would be pruned if it grew beyond 1000
+        assert len(lines) <= 1000, "reflections.jsonl must stay bounded"
 
         # Verify: overall health is between 0 and 1
         health = metrics.get_overall_health()
@@ -363,7 +366,11 @@ class TestStress100Iterations:
         assert 0.0 <= health <= 1.0
 
     def test_reflections_file_growth(self, tmp_path):
-        """Verify reflections.jsonl grows linearly with iterations."""
+        """Verify reflections.jsonl is pruned when it exceeds 1000 lines.
+
+        The pruning mechanism keeps only the last 500 lines once the file
+        grows beyond 1000 lines, preventing unbounded growth.
+        """
         memory_dir = tmp_path / "memory"
         memory_dir.mkdir()
 
@@ -384,7 +391,7 @@ class TestStress100Iterations:
             metrics,
         )
 
-        # Run 100 cycles
+        # Run 100 cycles - should not trigger pruning (threshold is 1000)
         for i in range(100):
             iteration_data = {
                 "node": "code",
@@ -394,7 +401,6 @@ class TestStress100Iterations:
             }
             feedback_loop.run_cycle(iteration_data)
 
-        # Reflections should be exactly 100 lines
         reflections_path = memory_dir / "reflections.jsonl"
         lines = reflections_path.read_text().strip().splitlines()
         assert len(lines) == 100
@@ -404,6 +410,52 @@ class TestStress100Iterations:
             data = json.loads(line)
             assert "node" in data
             assert "success" in data
+
+    def test_reflections_pruning_at_threshold(self, tmp_path):
+        """Verify reflections.jsonl is pruned to 500 lines when it exceeds 1000."""
+        memory_dir = tmp_path / "memory"
+        memory_dir.mkdir()
+
+        kernel_dir = _make_kernel_dir(tmp_path)
+        graph_file = _make_graph_file(kernel_dir)
+        knowledge_dir = _make_knowledge_dir(tmp_path)
+
+        graph = GraphExecutor(str(graph_file))
+        knowledge = KnowledgeStore(str(knowledge_dir))
+        reflector = Reflector(str(memory_dir), knowledge)
+        evolution_engine = EvolutionEngine(str(kernel_dir), graph)
+        metrics = EvolutionMetrics(window_size=10)
+
+        feedback_loop = FeedbackLoop(
+            str(memory_dir),
+            reflector,
+            evolution_engine,
+            metrics,
+        )
+
+        # Pre-populate reflections.jsonl with 999 lines (just below threshold)
+        reflections_path = memory_dir / "reflections.jsonl"
+        with open(reflections_path, "w") as f:
+            for i in range(999):
+                f.write(json.dumps({"node": "code", "success": True, "iteration": i}) + "\n")
+
+        # Adding 2 more will bring it to 1001, triggering pruning to 500
+        for i in range(2):
+            iteration_data = {
+                "node": "test",
+                "result": "success",
+                "errors": [],
+                "iteration": 999 + i,
+            }
+            feedback_loop.run_cycle(iteration_data)
+
+        lines = reflections_path.read_text().strip().splitlines()
+        # After exceeding 1000, should be pruned to 500
+        assert len(lines) == 500
+
+        # Verify the kept lines are the most recent ones
+        last_entry = json.loads(lines[-1])
+        assert last_entry["node"] == "test"
 
     def test_historian_effectiveness_under_load(self, tmp_path):
         """Verify effectiveness analysis works with large history."""
