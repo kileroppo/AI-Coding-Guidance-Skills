@@ -69,8 +69,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--goal",
         type=str,
-        required=True,
+        default=None,
         help="The development goal to work toward",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Run setup checks and exit",
     )
     parser.add_argument(
         "--max-iterations",
@@ -204,6 +209,19 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         The final state dict after execution completes.
     """
     args = parse_args(argv)
+
+    # Handle --check: run setup checks and exit early
+    if args.check:
+        from setup_check import SetupChecker
+        checker = SetupChecker(str(KERNEL_ROOT))
+        results = checker.run_all_checks()
+        exit_code = checker.print_results(results)
+        sys.exit(exit_code)
+
+    # Validate that --goal is required unless --check is used
+    if not args.goal:
+        print("error: the following arguments are required: --goal", file=sys.stderr)
+        sys.exit(2)
 
     state_path = str(KERNEL_ROOT / "kernel" / "state.yaml")
     memory_dir = str(KERNEL_ROOT / "memory")

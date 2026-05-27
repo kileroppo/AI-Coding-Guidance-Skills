@@ -16,6 +16,20 @@ and the Art of War.
 - Python 3.12+
 - pyyaml (`pip install pyyaml`)
 
+## Installation
+
+```bash
+# Clone the repository
+git clone <repo-url>
+cd AI-Coding-Guidance-Skills
+
+# Install with pip (editable mode for development)
+pip install -e ".[dev]"
+
+# Verify your setup
+python3.12 runner.py --check
+```
+
 ## Three Execution Modes
 
 ### Mode 1: Dry-run traversal
@@ -42,6 +56,7 @@ python3.12 runner.py --goal "Build a REST API" --ai-command "claude --print"
 
 ## Quick Start
 
+0. Verify setup: `python3.12 runner.py --check`
 1. Clone this repository
 2. Install dependencies: `pip install pyyaml`
 3. Try a dry run: `python3.12 runner.py --goal "Hello world app" --dry-run`

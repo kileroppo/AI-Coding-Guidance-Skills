@@ -29,9 +29,9 @@ class TestParseArgs:
     """Tests for the parse_args function."""
 
     def test_required_goal(self) -> None:
-        """Test that --goal is required."""
-        with pytest.raises(SystemExit):
-            runner.parse_args([])
+        """Test that --goal defaults to None when not provided."""
+        args = runner.parse_args([])
+        assert args.goal is None
 
     def test_goal_argument(self) -> None:
         """Test parsing the --goal argument."""
@@ -58,9 +58,33 @@ class TestParseArgs:
         args = runner.parse_args(["--goal", "test"])
         assert args.dry_run is False
 
+    def test_check_flag(self) -> None:
+        """Test parsing the --check flag."""
+        args = runner.parse_args(["--check"])
+        assert args.check is True
+        assert args.goal is None
+
+    def test_check_flag_default(self) -> None:
+        """Test that --check defaults to False."""
+        args = runner.parse_args(["--goal", "test"])
+        assert args.check is False
+
 
 class TestMain:
     """Tests for the main function."""
+
+    def test_main_no_goal_exits(self) -> None:
+        """Test that main exits with code 2 when no --goal is provided."""
+        with pytest.raises(SystemExit) as exc_info:
+            runner.main([])
+        assert exc_info.value.code == 2
+
+    def test_main_check_flag(self) -> None:
+        """Test that --check runs setup checks and exits."""
+        with pytest.raises(SystemExit) as exc_info:
+            runner.main(["--check"])
+        # Exit code 0 means all checks passed, 1 means some failed
+        assert exc_info.value.code in (0, 1)
 
     def test_main_dry_run(self) -> None:
         """Test main function with dry-run."""
