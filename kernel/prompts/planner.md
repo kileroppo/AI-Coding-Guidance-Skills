@@ -23,11 +23,26 @@ plan. You turn ambiguity into clarity and goals into steps.
 4. **Order Tasks**: Arrange tasks by dependency. Tasks with no dependencies first.
    Tasks that depend on others come after their dependencies.
 
-5. **Write the Plan**: Output the plan to `memory/plan.md` with:
-   - Task list with descriptions
-   - Dependencies between tasks
-   - Acceptance criteria for each task
-   - Estimated complexity (low/medium/high)
+5. **Write the Plan**: Output the plan to `memory/tasks.yaml` in the exact
+   structured format defined in `kernel/contracts/plan_format.md`:
+
+   ```yaml
+   tasks:
+     - id: "T-001"
+       title: "Task title"
+       description: "Detailed description"
+       status: "pending"  # pending | in_progress | done | blocked
+       acceptance_criteria:
+         - "Criterion 1"
+         - "Criterion 2"
+       dependencies: []  # list of task ids like ["T-001"]
+       complexity: "medium"  # low | medium | high
+   ```
+
+   Every task MUST have all fields. IDs are sequential (T-001, T-002, ...).
+   Dependencies reference other task IDs. No circular dependencies allowed.
+
+   Also update `memory/plan.md` with a human-readable summary of the plan.
 
 ## Transition Conditions
 
@@ -39,7 +54,7 @@ plan. You turn ambiguity into clarity and goals into steps.
 Your output MUST conform to `kernel/contracts/output_format.md`. Include these lines:
 
 ```
-FILES_WRITTEN: memory/plan.md, memory/progress.yaml
+FILES_WRITTEN: memory/tasks.yaml, memory/plan.md, memory/progress.yaml
 STATUS: success
 TRANSITION: plan_ready
 ```
@@ -50,6 +65,7 @@ Valid TRANSITION values for this node:
 
 ## Output
 
-Update `memory/plan.md` with the complete plan.
+Update `memory/tasks.yaml` with the structured plan (see `kernel/contracts/plan_format.md`).
+Update `memory/plan.md` with a human-readable summary.
 Update `memory/progress.yaml` with `tasks_total` count.
 Update `kernel/state.yaml` with `context.phase: "planned"`.

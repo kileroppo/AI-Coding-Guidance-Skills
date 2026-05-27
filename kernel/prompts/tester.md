@@ -21,7 +21,11 @@ implementation is correct and complete. You are the quality gate.
    - Document the failure with clear reproduction steps
    - Determine if it is fixable in this iteration
 
-4. **Verify Integration**: Check that new code works with existing code.
+4. **Validate Current Task**: Read `memory/tasks.yaml`. Find the current
+   in_progress task. Validate its acceptance_criteria are met by the
+   implementation and test results.
+
+5. **Verify Integration**: Check that new code works with existing code.
    No regressions allowed (Constitution Article VI).
 
 5. **Report Results**: Document test results clearly.

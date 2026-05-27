@@ -7,6 +7,8 @@ suitable for piping to an AI CLI tool via subprocess.
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 
 class ContextAssembler:
     """Assembles full context prompt from kernel components."""
@@ -51,7 +53,12 @@ class ContextAssembler:
         state_summary = self._format_state(state)
         sections.append(f"=== CURRENT STATE ===\n\n{state_summary}")
 
-        # 3. Current node's prompt file
+        # 4. Current task from tasks.yaml
+        current_task = self._load_current_task()
+        if current_task:
+            sections.append(f"=== CURRENT TASK ===\n\n{current_task}")
+
+        # 5. Current node's prompt file
         prompt_file = graph_executor.get_prompt_for_node(node["id"])
         if prompt_file:
             prompt_path = self.kernel_root / "kernel" / prompt_file
@@ -60,23 +67,23 @@ class ContextAssembler:
             prompt_content = "(no prompt file configured for this node)"
         sections.append(f"=== NODE PROMPT ({node['id']}) ===\n\n{prompt_content}")
 
-        # 4. Philosophy - dao.md
+        # 6. Philosophy - dao.md
         dao_path = self.kernel_root / "kernel" / "philosophy" / "dao.md"
         dao_content = self._read_file(dao_path)
         sections.append(f"=== PHILOSOPHY: DAO ===\n\n{dao_content}")
 
-        # 5. Philosophy - strategy.md
+        # 7. Philosophy - strategy.md
         strategy_path = self.kernel_root / "kernel" / "philosophy" / "strategy.md"
         strategy_content = self._read_file(strategy_path)
         sections.append(f"=== PHILOSOPHY: STRATEGY ===\n\n{strategy_content}")
 
-        # 6. Skills loaded in state
+        # 8. Skills loaded in state
         skills_loaded = state.get("context", {}).get("skills_loaded", [])
         if skills_loaded:
             skills_section = self._load_skills(skills_loaded, knowledge_store)
             sections.append(f"=== LOADED SKILLS ===\n\n{skills_section}")
 
-        # 7. Output format contract
+        # 9. Output format contract
         contract_path = self.kernel_root / "kernel" / "contracts" / "output_format.md"
         contract_content = self._read_file(contract_path)
         if not contract_content.startswith("(file not found"):
@@ -85,6 +92,62 @@ class ContextAssembler:
             )
 
         return "\n\n".join(sections)
+
+    def _load_current_task(self) -> str:
+        """Load the current task from memory/tasks.yaml.
+
+        Finds the in_progress task, or the first eligible pending task
+        (whose dependencies are all done), and formats it for display.
+
+        Returns:
+            Formatted task string, or empty string if no task is available.
+        """
+        tasks_path = self.kernel_root / "memory" / "tasks.yaml"
+        if not tasks_path.exists():
+            return ""
+        with open(tasks_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        tasks = data.get("tasks", [])
+        if not tasks:
+            return ""
+
+        status_map = {t["id"]: t.get("status", "pending") for t in tasks}
+
+        # First look for an in_progress task
+        current = None
+        for task in tasks:
+            if task.get("status") == "in_progress":
+                current = task
+                break
+
+        # If no in_progress task, find first eligible pending task
+        if current is None:
+            pending = [t for t in tasks if t.get("status") == "pending"]
+            pending.sort(key=lambda t: t["id"])
+            for task in pending:
+                deps = task.get("dependencies", [])
+                if all(status_map.get(dep) == "done" for dep in deps):
+                    current = task
+                    break
+
+        if current is None:
+            return ""
+
+        lines = []
+        lines.append(f"ID: {current['id']}")
+        lines.append(f"Title: {current.get('title', '(no title)')}")
+        lines.append(f"Status: {current.get('status', 'pending')}")
+        lines.append(f"Description: {current.get('description', '(no description)')}")
+        criteria = current.get("acceptance_criteria", [])
+        if criteria:
+            lines.append("Acceptance Criteria:")
+            for criterion in criteria:
+                lines.append(f"  - {criterion}")
+        deps = current.get("dependencies", [])
+        if deps:
+            lines.append(f"Dependencies: {', '.join(deps)}")
+        lines.append(f"Complexity: {current.get('complexity', 'medium')}")
+        return "\n".join(lines)
 
     def _read_file(self, path: Path) -> str:
         """Read a file, returning placeholder if not found.

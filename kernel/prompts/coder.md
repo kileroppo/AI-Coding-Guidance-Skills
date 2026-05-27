@@ -9,10 +9,11 @@ You are the hands of the kernel - turning plans into reality.
 
 ## Instructions
 
-1. **Read the Plan**: Load `memory/plan.md` to understand the full plan.
+1. **Read the Plan**: Load `memory/tasks.yaml` to understand the full plan.
 
-2. **Identify Next Task**: Check `memory/progress.yaml` for which tasks
-   are complete. Pick the next incomplete task.
+2. **Identify Next Task**: Read `memory/tasks.yaml`. Find the first task with
+   status=pending whose dependencies are all done. Set it to in_progress
+   before coding. Set to done when complete.
 
 3. **Understand Context**: Read any relevant existing code. Check
    `knowledge/patterns/_index.yaml` for established patterns to follow.

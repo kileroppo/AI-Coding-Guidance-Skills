@@ -237,6 +237,14 @@ class StateManager:
                 return (True, node_id, visits)
         return (False, None, 0)
 
+    def get_tasks_path(self) -> Path:
+        """Return the path to tasks.yaml in the memory directory.
+
+        Returns:
+            Path to memory/tasks.yaml.
+        """
+        return self.memory_dir / "tasks.yaml"
+
     def check_convergence(self, lookback: int = 5) -> tuple[bool, int]:
         """Check if progress has stalled (tasks_done unchanged over lookback iterations).
 
