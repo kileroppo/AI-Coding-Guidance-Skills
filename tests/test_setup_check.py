@@ -172,17 +172,17 @@ class TestCheckSkillPaths:
     def test_passes_with_valid_skill_paths(self, tmp_path):
         """Should pass when all skill paths resolve to directories."""
         # Create skill directories
-        (tmp_path / "knowledge" / "skills" / "ralph").mkdir(parents=True)
-        (tmp_path / "knowledge" / "skills" / "prd").mkdir(parents=True)
+        (tmp_path / "skills" / "ralph").mkdir(parents=True)
+        (tmp_path / "skills" / "prd").mkdir(parents=True)
 
         # Create _index.yaml
         index_data = {
             "items": [
-                {"name": "ralph", "path": "knowledge/skills/ralph"},
-                {"name": "prd", "path": "knowledge/skills/prd"},
+                {"name": "ralph", "path": "ralph"},
+                {"name": "prd", "path": "prd"},
             ]
         }
-        with open(tmp_path / "knowledge" / "skills" / "_index.yaml", "w") as f:
+        with open(tmp_path / "skills" / "_index.yaml", "w") as f:
             yaml.safe_dump(index_data, f)
 
         checker = SetupChecker(str(tmp_path))
@@ -192,23 +192,23 @@ class TestCheckSkillPaths:
 
     def test_fails_with_missing_skill_dirs(self, tmp_path):
         """Should fail and list missing skill directories."""
-        (tmp_path / "knowledge" / "skills").mkdir(parents=True)
+        (tmp_path / "skills").mkdir(parents=True)
 
         index_data = {
             "items": [
-                {"name": "ralph", "path": "knowledge/skills/ralph"},
-                {"name": "missing", "path": "knowledge/skills/missing"},
+                {"name": "ralph", "path": "ralph"},
+                {"name": "missing", "path": "missing"},
             ]
         }
-        with open(tmp_path / "knowledge" / "skills" / "_index.yaml", "w") as f:
+        with open(tmp_path / "skills" / "_index.yaml", "w") as f:
             yaml.safe_dump(index_data, f)
 
         checker = SetupChecker(str(tmp_path))
         passed, message = checker.check_skill_paths()
         assert passed is False
         assert "Missing:" in message
-        assert "knowledge/skills/ralph" in message
-        assert "knowledge/skills/missing" in message
+        assert "ralph" in message
+        assert "missing" in message
 
     def test_fails_when_index_not_found(self, tmp_path):
         """Should fail when _index.yaml does not exist."""
@@ -219,9 +219,9 @@ class TestCheckSkillPaths:
 
     def test_passes_with_empty_items(self, tmp_path):
         """Should pass when items list is empty."""
-        (tmp_path / "knowledge" / "skills").mkdir(parents=True)
+        (tmp_path / "skills").mkdir(parents=True)
         index_data = {"items": []}
-        with open(tmp_path / "knowledge" / "skills" / "_index.yaml", "w") as f:
+        with open(tmp_path / "skills" / "_index.yaml", "w") as f:
             yaml.safe_dump(index_data, f)
 
         checker = SetupChecker(str(tmp_path))
@@ -231,8 +231,8 @@ class TestCheckSkillPaths:
 
     def test_fails_when_index_not_mapping(self, tmp_path):
         """Should fail when _index.yaml is not a mapping."""
-        (tmp_path / "knowledge" / "skills").mkdir(parents=True)
-        (tmp_path / "knowledge" / "skills" / "_index.yaml").write_text("- item1\n")
+        (tmp_path / "skills").mkdir(parents=True)
+        (tmp_path / "skills" / "_index.yaml").write_text("- item1\n")
 
         checker = SetupChecker(str(tmp_path))
         passed, message = checker.check_skill_paths()
@@ -241,14 +241,14 @@ class TestCheckSkillPaths:
 
     def test_skips_items_with_empty_path(self, tmp_path):
         """Should skip items with empty or missing path field."""
-        (tmp_path / "knowledge" / "skills").mkdir(parents=True)
+        (tmp_path / "skills").mkdir(parents=True)
         index_data = {
             "items": [
                 {"name": "nopath"},
                 {"name": "empty", "path": ""},
             ]
         }
-        with open(tmp_path / "knowledge" / "skills" / "_index.yaml", "w") as f:
+        with open(tmp_path / "skills" / "_index.yaml", "w") as f:
             yaml.safe_dump(index_data, f)
 
         checker = SetupChecker(str(tmp_path))

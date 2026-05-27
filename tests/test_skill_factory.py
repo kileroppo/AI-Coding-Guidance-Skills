@@ -82,22 +82,22 @@ class TestValidateSkillName:
 class TestCreateSkill:
     """Tests for SkillFactory.create_skill()."""
 
-    def test_creates_directory_and_skill_md(self, tmp_knowledge: Path) -> None:
+    def test_creates_directory_and_skill_md(self, tmp_knowledge: Path, tmp_path: Path) -> None:
         factory = SkillFactory(str(tmp_knowledge))
         result = factory.create_skill("my-skill", "A test skill", "Some content here")
 
-        assert result == tmp_knowledge / "skills" / "my-skill"
+        assert result == tmp_path / "skills" / "my-skill"
         assert result.is_dir()
         skill_md = result / "SKILL.md"
         assert skill_md.exists()
         content = skill_md.read_text(encoding="utf-8")
         assert content == "# my-skill\n\nA test skill\n\nSome content here"
 
-    def test_registers_in_index(self, tmp_knowledge: Path) -> None:
+    def test_registers_in_index(self, tmp_knowledge: Path, tmp_path: Path) -> None:
         factory = SkillFactory(str(tmp_knowledge))
         factory.create_skill("my-skill", "A test skill", "Content", ["python", "testing"])
 
-        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        index_path = tmp_path / "skills" / "_index.yaml"
         with open(index_path, "r", encoding="utf-8") as f:
             index = yaml.safe_load(f)
 
@@ -113,11 +113,11 @@ class TestCreateSkill:
         with pytest.raises(ValueError, match="Invalid skill name"):
             factory.create_skill("Invalid Name", "desc", "content")
 
-    def test_tags_default_to_empty_list(self, tmp_knowledge: Path) -> None:
+    def test_tags_default_to_empty_list(self, tmp_knowledge: Path, tmp_path: Path) -> None:
         factory = SkillFactory(str(tmp_knowledge))
         factory.create_skill("no-tags", "No tags skill", "Content")
 
-        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        index_path = tmp_path / "skills" / "_index.yaml"
         with open(index_path, "r", encoding="utf-8") as f:
             index = yaml.safe_load(f)
 
@@ -148,12 +148,12 @@ class TestCreateSkillFromTemplate:
         assert "## Usage" in content
         assert "Use it like this." in content
 
-    def test_registers_in_index(self, tmp_knowledge: Path) -> None:
+    def test_registers_in_index(self, tmp_knowledge: Path, tmp_path: Path) -> None:
         factory = SkillFactory(str(tmp_knowledge))
         sections = {"overview": "Overview content."}
         factory.create_skill_from_template("tmpl-skill", "Template", sections, ["ai"])
 
-        index_path = tmp_knowledge / "skills" / "_index.yaml"
+        index_path = tmp_path / "skills" / "_index.yaml"
         with open(index_path, "r", encoding="utf-8") as f:
             index = yaml.safe_load(f)
 
@@ -171,9 +171,10 @@ class TestEvolutionEngineAddSkill:
         (kernel_dir / "evolution").mkdir()
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        (knowledge_dir / "skills").mkdir()
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
         # Create empty index
-        index_path = knowledge_dir / "skills" / "_index.yaml"
+        index_path = skills_dir / "_index.yaml"
         with open(index_path, "w") as f:
             yaml.safe_dump({"items": []}, f)
 
@@ -197,7 +198,7 @@ class TestEvolutionEngineAddSkill:
 
         assert result is True
         # Verify skill was created
-        skill_dir = knowledge_dir / "skills" / "test-skill"
+        skill_dir = skills_dir / "test-skill"
         assert skill_dir.is_dir()
         skill_md = skill_dir / "SKILL.md"
         assert skill_md.exists()
@@ -220,8 +221,9 @@ class TestEvolutionEngineAddSkill:
         (kernel_dir / "evolution").mkdir()
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        (knowledge_dir / "skills").mkdir()
-        index_path = knowledge_dir / "skills" / "_index.yaml"
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        index_path = skills_dir / "_index.yaml"
         with open(index_path, "w") as f:
             yaml.safe_dump({"items": []}, f)
 

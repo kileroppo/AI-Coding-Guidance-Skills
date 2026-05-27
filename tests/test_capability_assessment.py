@@ -261,9 +261,12 @@ class TestRunnerIntegration:
         memory_dir.mkdir()
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        (knowledge_dir / "skills").mkdir()
         (knowledge_dir / "rules").mkdir()
         (knowledge_dir / "patterns").mkdir()
+
+        # Skills directory is a sibling of knowledge/
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
 
         # Create graph.yaml
         graph_data = {
@@ -295,7 +298,7 @@ class TestRunnerIntegration:
             yaml.safe_dump(state_data, f)
 
         # Create skills index with no relevant skills
-        with open(knowledge_dir / "skills" / "_index.yaml", "w") as f:
+        with open(skills_dir / "_index.yaml", "w") as f:
             yaml.safe_dump({"items": [
                 {"name": "cooking-skill", "tags": ["cooking"], "description": "food prep", "path": "cooking", "composable_with": []}
             ]}, f)
@@ -323,9 +326,12 @@ class TestRunnerIntegration:
         memory_dir.mkdir()
         knowledge_dir = tmp_path / "knowledge"
         knowledge_dir.mkdir()
-        (knowledge_dir / "skills").mkdir()
         (knowledge_dir / "rules").mkdir()
         (knowledge_dir / "patterns").mkdir()
+
+        # Skills directory is a sibling of knowledge/
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
 
         # Create graph.yaml
         graph_data = {
@@ -357,7 +363,7 @@ class TestRunnerIntegration:
             yaml.safe_dump(state_data, f)
 
         # Create skills index with skills matching the goal
-        with open(knowledge_dir / "skills" / "_index.yaml", "w") as f:
+        with open(skills_dir / "_index.yaml", "w") as f:
             yaml.safe_dump({"items": [
                 {"name": "api-skill", "tags": ["api", "rest", "http"], "description": "Building REST APIs", "path": "api", "composable_with": []},
                 {"name": "testing-skill", "tags": ["testing", "pytest"], "description": "Writing tests", "path": "testing", "composable_with": []},
@@ -387,9 +393,12 @@ class TestRunnerIntegration:
             memory_dir.mkdir()
             knowledge_dir = tmp_path / "knowledge"
             knowledge_dir.mkdir()
-            (knowledge_dir / "skills").mkdir()
             (knowledge_dir / "rules").mkdir()
             (knowledge_dir / "patterns").mkdir()
+
+            # Skills directory is a sibling of knowledge/
+            skills_dir = tmp_path / "skills"
+            skills_dir.mkdir()
 
             graph_data = {
                 "nodes": [{"id": "init", "prompt_file": "prompts/init.md", "description": "Init", "transitions": [], "max_retries": 1}],
@@ -401,7 +410,7 @@ class TestRunnerIntegration:
             state_data = {"current_node": "init", "iteration_count": 0, "goal": "", "status": "idle", "errors": [], "context": {}}
             with open(kernel_dir / "state.yaml", "w") as f:
                 yaml.safe_dump(state_data, f)
-            with open(knowledge_dir / "skills" / "_index.yaml", "w") as f:
+            with open(skills_dir / "_index.yaml", "w") as f:
                 yaml.safe_dump({"items": []}, f)
             with open(knowledge_dir / "rules" / "_index.yaml", "w") as f:
                 yaml.safe_dump({"items": []}, f)

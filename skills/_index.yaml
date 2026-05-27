@@ -30,47 +30,47 @@ workflow:
     - zoom-out
 items:
   - name: ralph
-    path: knowledge/skills/ralph
+    path: ralph
     description: "Autonomous coding agent that reads prd.json, picks user stories, implements them one by one"
     tags: [execution, autonomous, coding]
     composable_with: [prd, tdd, diagnose]
   - name: prd
-    path: knowledge/skills/prd
+    path: prd
     description: "Generate Product Requirements Documents with clarifying questions and structured output"
     tags: [planning, requirements, documentation]
     composable_with: [ralph, to-issues, grill-me]
   - name: ui-ux-pro-max
-    path: knowledge/skills/ui-ux-pro-max
+    path: ui-ux-pro-max
     description: "UI/UX design intelligence with 50+ styles, 161 color palettes, 57 font pairings across 10 stacks"
     tags: [design, ui, ux, frontend]
     composable_with: [ui-styling, design-system, brand]
   - name: ui-styling
-    path: knowledge/skills/ui-styling
+    path: ui-styling
     description: "Tailwind CSS and shadcn/ui component styling with canvas fonts"
     tags: [design, styling, tailwind, shadcn]
     composable_with: [ui-ux-pro-max, design-system]
   - name: design-system
-    path: knowledge/skills/design-system
+    path: design-system
     description: "Design tokens, component specs, and slide generation"
     tags: [design, tokens, system]
     composable_with: [ui-ux-pro-max, ui-styling, brand]
   - name: design
-    path: knowledge/skills/design
+    path: design
     description: "Comprehensive design skill - logos, CIP, icons, slides"
     tags: [design, logo, icons, branding]
     composable_with: [brand, ui-ux-pro-max, banner-design]
   - name: brand
-    path: knowledge/skills/brand
+    path: brand
     description: "Brand identity management - guidelines, voice, visual identity"
     tags: [brand, identity, guidelines]
     composable_with: [design, design-system, ui-ux-pro-max]
   - name: banner-design
-    path: knowledge/skills/banner-design
+    path: banner-design
     description: "Banner creation with size and style references"
     tags: [design, banner, marketing]
     composable_with: [brand, design]
   - name: slides
-    path: knowledge/skills/slides
+    path: slides
     description: "HTML presentation creation with layout patterns and strategies"
     tags: [presentations, slides, html]
     composable_with: [design-system, brand]

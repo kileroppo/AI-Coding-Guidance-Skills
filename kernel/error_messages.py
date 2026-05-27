@@ -25,7 +25,7 @@ ERROR_MESSAGES: dict[str, dict[str, str]] = {
     },
     "skill_not_found": {
         "what": "Skill '{name}' not found in knowledge store",
-        "why": "The skill is referenced but not installed in knowledge/skills/",
+        "why": "The skill is referenced but not installed in skills/",
         "fix": "Run: python3.12 setup_check.py --check to validate skill installation",
     },
     "contract_violation": {
