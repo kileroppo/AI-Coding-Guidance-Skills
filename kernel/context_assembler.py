@@ -22,7 +22,7 @@ class ContextAssembler:
         self.kernel_root = kernel_root
 
     def assemble(self, state: dict, node: dict, graph_executor: Any,
-                 knowledge_store: Any) -> str:
+                 knowledge_store: Any, token_budget: int = 32000) -> str:
         """Assemble full context from BOOT.md + state + node prompt + philosophy + skills.
 
         Returns a single formatted string suitable for piping to an AI.
@@ -32,33 +32,59 @@ class ContextAssembler:
             node: Current node dict from GraphExecutor.
             graph_executor: GraphExecutor instance for prompt path resolution.
             knowledge_store: KnowledgeStore instance for skill loading.
+            token_budget: Maximum estimated tokens (len//4). Default 32000.
 
         Returns:
             A single formatted string with all context sections.
         """
         sections = []
 
-        # 1. BOOT.md
+        # 1. BOOT.md (core)
         boot_path = self.kernel_root / "kernel" / "BOOT.md"
         boot_content = self._read_file(boot_path)
         sections.append(f"=== BOOT SEQUENCE ===\n\n{boot_content}")
 
-        # 2. Constitution
+        # 2. Constitution (core)
         const_path = self.kernel_root / "kernel" / "constitution.md"
         const_content = self._read_file(const_path)
         if const_content and not const_content.startswith("(file not found"):
             sections.append(f"=== CONSTITUTION (IMMUTABLE) ===\n\n{const_content}")
 
-        # 3. Current state summary
+        # 3. Current state summary (core)
         state_summary = self._format_state(state)
         sections.append(f"=== CURRENT STATE ===\n\n{state_summary}")
 
-        # 4. Current task from tasks.yaml
+        # 4. Current task from tasks.yaml (core)
         current_task = self._load_current_task()
         if current_task:
             sections.append(f"=== CURRENT TASK ===\n\n{current_task}")
 
-        # 5. Current node's prompt file
+        # 4b. Progress (trimmable - priority 4, removed last among trimmable)
+        progress_content = self._load_progress()
+        progress_section = ""
+        if progress_content:
+            progress_section = f"=== PROGRESS ===\n\n{progress_content}"
+
+        # 4c. Plan (trimmable - priority 3)
+        plan_content = self._load_plan()
+        plan_section = ""
+        if plan_content:
+            plan_section = f"=== PLAN ===\n\n{plan_content}"
+
+        # 4d. Workspace Manifest (trimmable - priority 2)
+        workspace_path = state.get("workspace_path", "")
+        workspace_content = self._load_workspace_manifest(workspace_path)
+        workspace_section = ""
+        if workspace_content:
+            workspace_section = f"=== WORKSPACE MANIFEST ===\n\n{workspace_content}"
+
+        # 4e. Recent Decisions (trimmable - priority 1, removed first)
+        decisions_content = self._load_recent_decisions()
+        decisions_section = ""
+        if decisions_content:
+            decisions_section = f"=== RECENT DECISIONS ===\n\n{decisions_content}"
+
+        # 5. Current node's prompt file (core)
         prompt_file = graph_executor.get_prompt_for_node(node["id"])
         if prompt_file:
             prompt_path = self.kernel_root / "kernel" / prompt_file
@@ -105,7 +131,148 @@ class ContextAssembler:
                 f"=== RECENT REFLECTIONS ===\n\n{recent_reflections}"
             )
 
-        return "\n\n".join(sections)
+        # Apply token budgeting: trimmable sections in removal order
+        # (least important first: decisions, workspace, plan, progress)
+        trimmable = [decisions_section, workspace_section,
+                     plan_section, progress_section]
+
+        # Start with all trimmable sections included
+        active_trimmable = [s for s in trimmable if s]
+
+        # Build full text and check budget
+        def _build_text(core: list, extra: list) -> str:
+            all_parts = []
+            # Insert extra sections after core sections (after section 4)
+            # Core sections end at index where NODE PROMPT starts
+            node_prompt_idx = None
+            for i, s in enumerate(core):
+                if s.startswith("=== NODE PROMPT"):
+                    node_prompt_idx = i
+                    break
+            if node_prompt_idx is not None:
+                all_parts = core[:node_prompt_idx] + extra + core[node_prompt_idx:]
+            else:
+                all_parts = core + extra
+            return "\n\n".join(all_parts)
+
+        full_text = _build_text(sections, active_trimmable)
+        estimated_tokens = len(full_text) // 4
+
+        # Remove sections from least important until within budget
+        while estimated_tokens > token_budget and active_trimmable:
+            # Remove the first item (least important remaining)
+            active_trimmable.pop(0)
+            full_text = _build_text(sections, active_trimmable)
+            estimated_tokens = len(full_text) // 4
+
+        return full_text
+
+    def _load_progress(self) -> str:
+        """Load progress information from memory/progress.yaml.
+
+        Returns:
+            Formatted progress string, or empty string if file doesn't exist.
+        """
+        progress_path = self.kernel_root / "memory" / "progress.yaml"
+        if not progress_path.exists():
+            return ""
+        try:
+            with open(progress_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            if not data or not isinstance(data, dict):
+                return ""
+            iteration = data.get("iteration", 0)
+            tasks_done = data.get("tasks_done", 0)
+            tasks_total = data.get("tasks_total", 0)
+            status = data.get("status", "unknown")
+            return f"Iteration: {iteration}, Tasks: {tasks_done}/{tasks_total} done, Status: {status}"
+        except (yaml.YAMLError, OSError):
+            return ""
+
+    def _load_recent_decisions(self, count: int = 5) -> str:
+        """Load the last N decisions from memory/decisions.jsonl.
+
+        Args:
+            count: Number of recent decisions to load.
+
+        Returns:
+            Formatted string of recent decisions, or empty string.
+        """
+        import json
+
+        decisions_path = self.kernel_root / "memory" / "decisions.jsonl"
+        if not decisions_path.exists():
+            return ""
+
+        records: list[dict] = []
+        with open(decisions_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        records.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+
+        if not records:
+            return ""
+
+        recent = records[-count:]
+        lines = []
+        for entry in recent:
+            timestamp = entry.get("timestamp", "")
+            decision_type = entry.get("type", "unknown")
+            summary = entry.get("summary", "")
+            lines.append(f"- [{timestamp}] {decision_type}: {summary}")
+        return "\n".join(lines)
+
+    def _load_workspace_manifest(self, workspace_path: str,
+                                 max_entries: int = 100) -> str:
+        """List files in the workspace directory recursively.
+
+        Args:
+            workspace_path: Path to the workspace directory.
+            max_entries: Maximum number of file entries to include.
+
+        Returns:
+            Tree-like file listing, or empty string if path doesn't exist.
+        """
+        if not workspace_path:
+            return ""
+        wp = Path(workspace_path)
+        if not wp.exists() or not wp.is_dir():
+            return ""
+
+        entries: list[str] = []
+        try:
+            for item in sorted(wp.rglob("*")):
+                if len(entries) >= max_entries:
+                    entries.append(f"... (truncated at {max_entries} entries)")
+                    break
+                rel = item.relative_to(wp)
+                if item.is_dir():
+                    entries.append(f"{rel}/")
+                else:
+                    entries.append(str(rel))
+        except OSError:
+            return ""
+
+        return "\n".join(entries)
+
+    def _load_plan(self) -> str:
+        """Load plan content from memory/plan.md.
+
+        Returns:
+            Plan content, or empty string if file doesn't exist or is empty.
+        """
+        plan_path = self.kernel_root / "memory" / "plan.md"
+        if not plan_path.exists():
+            return ""
+        try:
+            content = plan_path.read_text(encoding="utf-8").strip()
+            return content
+        except OSError:
+            return ""
 
     def _load_current_task(self) -> str:
         """Load the current task from memory/tasks.yaml.
