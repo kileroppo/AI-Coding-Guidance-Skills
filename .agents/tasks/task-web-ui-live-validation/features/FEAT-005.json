@@ -2,7 +2,7 @@
   "id": "FEAT-005",
   "type": "feat",
   "description": "User Scenarios + Documentation + Final Integration Stress Test. Create example scenarios with validation scripts, comprehensive docs, and a stress test that runs 100 rapid iterations to verify no memory leaks or unbounded growth.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Create examples/ directory at project root",
     "Create examples/todo_app/goal.md with goal text 'Build a Python Flask todo app with REST API and SQLite'",
