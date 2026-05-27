@@ -138,16 +138,17 @@ class EvolutionEngine:
 
         return (True, "Change is valid")
 
-    def apply_change(self, change: dict) -> bool:
+    def apply_change(self, change: dict, state: dict | None = None) -> bool:
         """Apply the change. Log to history.jsonl.
 
         Args:
             change: The change dict to apply.
+            state: Optional state dict for user-owned file checking.
 
         Returns:
             True if the change was applied successfully.
         """
-        valid, reason = self.validate_change(change)
+        valid, reason = self.validate_change(change, state=state)
         if not valid:
             change["status"] = "rejected"
             change["rejection_reason"] = reason

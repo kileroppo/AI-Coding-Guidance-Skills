@@ -1,6 +1,6 @@
 """Integration tests that prove the system works end-to-end.
 
-These tests use monkeypatch to mock subprocess.run, simulating AI CLI tool
+These tests use monkeypatch to mock subprocess.Popen, simulating AI CLI tool
 responses. They exercise the full flow from goal to completion through
 runner.main() in Mode 3.
 """
@@ -8,6 +8,7 @@ runner.main() in Mode 3.
 import subprocess
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -15,8 +16,28 @@ import yaml
 import runner
 
 
+def _make_mock_proc(returncode: int, stdout: str, stderr: str):
+    """Create a mock Popen process object.
+
+    Args:
+        returncode: The return code for the process.
+        stdout: The stdout text.
+        stderr: The stderr text.
+
+    Returns:
+        A MagicMock that mimics a subprocess.Popen object.
+    """
+    proc = MagicMock()
+    proc.communicate.return_value = (stdout, stderr)
+    proc.returncode = returncode
+    proc.kill.return_value = None
+    proc.terminate.return_value = None
+    proc.wait.return_value = returncode
+    return proc
+
+
 def make_mock_ai_response(node_responses: dict[str, str]):
-    """Create a subprocess.run mock that returns appropriate responses per node.
+    """Create a subprocess.Popen mock that returns appropriate responses per node.
 
     node_responses maps node_id -> stdout_text (which should include TRANSITION: line).
 
@@ -27,23 +48,32 @@ def make_mock_ai_response(node_responses: dict[str, str]):
         node_responses: Mapping of node_id to the stdout text to return.
 
     Returns:
-        A callable that mimics subprocess.run behavior.
+        A callable that mimics subprocess.Popen behavior.
     """
 
-    def mock_run(cmd: Any, input: str | None = None, **kwargs: Any) -> subprocess.CompletedProcess:
-        """Mock subprocess.run that returns node-specific responses."""
-        node_id = "unknown"
-        if input:
-            for line in input.splitlines():
-                if "NODE PROMPT" in line and "(" in line:
-                    node_id = line.split("(")[1].split(")")[0]
-                    break
-        response_text = node_responses.get(
-            node_id, "TRANSITION: goal_loaded\nSTATUS: success"
-        )
-        return subprocess.CompletedProcess(cmd, 0, stdout=response_text, stderr="")
+    def mock_popen(*args: Any, **kwargs: Any):
+        """Mock subprocess.Popen that returns node-specific responses."""
+        proc = MagicMock()
+        proc.kill.return_value = None
+        proc.terminate.return_value = None
 
-    return mock_run
+        def mock_communicate(input=None, timeout=None):
+            node_id = "unknown"
+            if input:
+                for line in input.splitlines():
+                    if "NODE PROMPT" in line and "(" in line:
+                        node_id = line.split("(")[1].split(")")[0]
+                        break
+            response_text = node_responses.get(
+                node_id, "TRANSITION: goal_loaded\nSTATUS: success"
+            )
+            return (response_text, "")
+        proc.communicate.side_effect = mock_communicate
+        proc.returncode = 0
+        proc.wait.return_value = 0
+        return proc
+
+    return mock_popen
 
 
 def make_failing_mock(
@@ -59,32 +89,41 @@ def make_failing_mock(
         node_responses: Normal responses for all nodes (used after failures resolved).
 
     Returns:
-        A callable that mimics subprocess.run with controlled failures.
+        A callable that mimics subprocess.Popen with controlled failures.
     """
     call_counts: dict[str, int] = {}
 
-    def mock_run(cmd: Any, input: str | None = None, **kwargs: Any) -> subprocess.CompletedProcess:
-        """Mock subprocess.run with controlled failures per node."""
-        node_id = "unknown"
-        if input:
-            for line in input.splitlines():
-                if "NODE PROMPT" in line and "(" in line:
-                    node_id = line.split("(")[1].split(")")[0]
-                    break
+    def mock_popen(*args: Any, **kwargs: Any):
+        """Mock subprocess.Popen with controlled failures per node."""
+        proc = MagicMock()
+        proc.kill.return_value = None
+        proc.terminate.return_value = None
 
-        call_counts[node_id] = call_counts.get(node_id, 0) + 1
+        def mock_communicate(input=None, timeout=None):
+            node_id = "unknown"
+            if input:
+                for line in input.splitlines():
+                    if "NODE PROMPT" in line and "(" in line:
+                        node_id = line.split("(")[1].split(")")[0]
+                        break
 
-        if node_id == fail_node and call_counts[node_id] <= fail_count:
-            return subprocess.CompletedProcess(
-                cmd, 1, stdout="", stderr="Simulated failure"
+            call_counts[node_id] = call_counts.get(node_id, 0) + 1
+
+            if node_id == fail_node and call_counts[node_id] <= fail_count:
+                proc.returncode = 1
+                return ("", "Simulated failure")
+
+            proc.returncode = 0
+            response_text = node_responses.get(
+                node_id, "TRANSITION: goal_loaded\nSTATUS: success"
             )
+            return (response_text, "")
+        proc.communicate.side_effect = mock_communicate
+        proc.returncode = 0
+        proc.wait.return_value = 0
+        return proc
 
-        response_text = node_responses.get(
-            node_id, "TRANSITION: goal_loaded\nSTATUS: success"
-        )
-        return subprocess.CompletedProcess(cmd, 0, stdout=response_text, stderr="")
-
-    return mock_run
+    return mock_popen
 
 
 def make_always_failing_mock(fail_node: str, node_responses: dict[str, str]):
@@ -95,29 +134,38 @@ def make_always_failing_mock(fail_node: str, node_responses: dict[str, str]):
         node_responses: Normal responses for other nodes.
 
     Returns:
-        A callable that mimics subprocess.run with perpetual failure for one node.
+        A callable that mimics subprocess.Popen with perpetual failure for one node.
     """
 
-    def mock_run(cmd: Any, input: str | None = None, **kwargs: Any) -> subprocess.CompletedProcess:
-        """Mock subprocess.run that always fails for the target node."""
-        node_id = "unknown"
-        if input:
-            for line in input.splitlines():
-                if "NODE PROMPT" in line and "(" in line:
-                    node_id = line.split("(")[1].split(")")[0]
-                    break
+    def mock_popen(*args: Any, **kwargs: Any):
+        """Mock subprocess.Popen that always fails for the target node."""
+        proc = MagicMock()
+        proc.kill.return_value = None
+        proc.terminate.return_value = None
 
-        if node_id == fail_node:
-            return subprocess.CompletedProcess(
-                cmd, 1, stdout="", stderr="Always fails"
+        def mock_communicate(input=None, timeout=None):
+            node_id = "unknown"
+            if input:
+                for line in input.splitlines():
+                    if "NODE PROMPT" in line and "(" in line:
+                        node_id = line.split("(")[1].split(")")[0]
+                        break
+
+            if node_id == fail_node:
+                proc.returncode = 1
+                return ("", "Always fails")
+
+            proc.returncode = 0
+            response_text = node_responses.get(
+                node_id, "TRANSITION: goal_loaded\nSTATUS: success"
             )
+            return (response_text, "")
+        proc.communicate.side_effect = mock_communicate
+        proc.returncode = 0
+        proc.wait.return_value = 0
+        return proc
 
-        response_text = node_responses.get(
-            node_id, "TRANSITION: goal_loaded\nSTATUS: success"
-        )
-        return subprocess.CompletedProcess(cmd, 0, stdout=response_text, stderr="")
-
-    return mock_run
+    return mock_popen
 
 
 @pytest.fixture
@@ -298,7 +346,7 @@ class TestFullCycleHelloWorld:
         }
 
         mock_fn = make_mock_ai_response(node_responses)
-        monkeypatch.setattr(subprocess, "run", mock_fn)
+        monkeypatch.setattr(subprocess, "Popen", mock_fn)
         monkeypatch.setattr(runner, "KERNEL_ROOT", kernel_env)
 
         state = runner.main([
@@ -331,21 +379,30 @@ class TestFullCycleHelloWorld:
             "reflect": "TRANSITION: no_evolution_needed\nSTATUS: success",
         }
 
-        def tracking_mock(cmd: Any, input: str | None = None, **kwargs: Any):
+        def tracking_mock(*args: Any, **kwargs: Any):
             """Track which nodes are visited."""
-            node_id = "unknown"
-            if input:
-                for line in input.splitlines():
-                    if "NODE PROMPT" in line and "(" in line:
-                        node_id = line.split("(")[1].split(")")[0]
-                        break
-            visited_nodes.append(node_id)
-            response_text = node_responses.get(
-                node_id, "TRANSITION: goal_loaded\nSTATUS: success"
-            )
-            return subprocess.CompletedProcess(cmd, 0, stdout=response_text, stderr="")
+            proc = MagicMock()
+            proc.kill.return_value = None
+            proc.terminate.return_value = None
 
-        monkeypatch.setattr(subprocess, "run", tracking_mock)
+            def mock_communicate(input=None, timeout=None):
+                node_id = "unknown"
+                if input:
+                    for line in input.splitlines():
+                        if "NODE PROMPT" in line and "(" in line:
+                            node_id = line.split("(")[1].split(")")[0]
+                            break
+                visited_nodes.append(node_id)
+                response_text = node_responses.get(
+                    node_id, "TRANSITION: goal_loaded\nSTATUS: success"
+                )
+                return (response_text, "")
+            proc.communicate.side_effect = mock_communicate
+            proc.returncode = 0
+            proc.wait.return_value = 0
+            return proc
+
+        monkeypatch.setattr(subprocess, "Popen", tracking_mock)
         monkeypatch.setattr(runner, "KERNEL_ROOT", kernel_env)
 
         runner.main([
@@ -387,7 +444,7 @@ class TestFailureAndRetry:
         mock_fn = make_failing_mock(
             fail_node="code", fail_count=1, node_responses=node_responses
         )
-        monkeypatch.setattr(subprocess, "run", mock_fn)
+        monkeypatch.setattr(subprocess, "Popen", mock_fn)
         monkeypatch.setattr(runner, "KERNEL_ROOT", kernel_env)
 
         state = runner.main([
@@ -422,7 +479,7 @@ class TestFailureAndRetry:
         mock_fn = make_failing_mock(
             fail_node="code", fail_count=2, node_responses=node_responses
         )
-        monkeypatch.setattr(subprocess, "run", mock_fn)
+        monkeypatch.setattr(subprocess, "Popen", mock_fn)
         monkeypatch.setattr(runner, "KERNEL_ROOT", kernel_env)
 
         state = runner.main([
@@ -514,7 +571,7 @@ class TestStuckDetectionIntegration:
         mock_fn = make_always_failing_mock(
             fail_node="code", node_responses=node_responses
         )
-        monkeypatch.setattr(subprocess, "run", mock_fn)
+        monkeypatch.setattr(subprocess, "Popen", mock_fn)
         monkeypatch.setattr(runner, "KERNEL_ROOT", kernel_env)
 
         state = runner.main([
@@ -549,7 +606,7 @@ class TestStuckDetectionIntegration:
         mock_fn = make_always_failing_mock(
             fail_node="code", node_responses=node_responses
         )
-        monkeypatch.setattr(subprocess, "run", mock_fn)
+        monkeypatch.setattr(subprocess, "Popen", mock_fn)
         monkeypatch.setattr(runner, "KERNEL_ROOT", kernel_env)
 
         # The default kernel_env graph has stuck_handler: reflect on code node

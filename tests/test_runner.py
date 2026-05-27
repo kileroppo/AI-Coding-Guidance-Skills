@@ -322,19 +322,21 @@ class TestMode3:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Some output\nSTATUS: success\nTRANSITION: goal_loaded\nMore output"
-        mock_result.stderr = ""
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = (
+            "Some output\nSTATUS: success\nTRANSITION: goal_loaded\nMore output",
+            "",
+        )
+        mock_proc.returncode = 0
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
             state = runner.main([
                 "--goal", "test mode3",
                 "--ai-command", "echo hello",
                 "--max-iterations", "1",
             ])
 
-        mock_run.assert_called_once()
+        mock_popen.assert_called_once()
         # After init with TRANSITION: goal_loaded, should advance to "plan"
         assert state["current_node"] == "plan"
 
@@ -344,12 +346,14 @@ class TestMode3:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Some output without transition info\nSTATUS: success"
-        mock_result.stderr = ""
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = (
+            "Some output without transition info\nSTATUS: success",
+            "",
+        )
+        mock_proc.returncode = 0
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test fallback",
                 "--ai-command", "echo hi",
@@ -365,12 +369,14 @@ class TestMode3:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "STATUS: success\nTRANSITION: nonexistent_condition"
-        mock_result.stderr = ""
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = (
+            "STATUS: success\nTRANSITION: nonexistent_condition",
+            "",
+        )
+        mock_proc.returncode = 0
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test unmatched",
                 "--ai-command", "echo hi",
@@ -382,12 +388,24 @@ class TestMode3:
 
     def test_mode3_timeout_handling(self, runner_env: Path, monkeypatch) -> None:
         """Test Mode 3 handles subprocess timeout correctly."""
-        from unittest.mock import patch
+        from unittest.mock import patch, MagicMock
         import subprocess as sp
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        with patch("subprocess.run", side_effect=sp.TimeoutExpired("echo", 5)):
+        mock_proc = MagicMock()
+        call_count = [0]
+        timeout_exc = sp.TimeoutExpired("echo", 5)
+
+        def _communicate_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] % 2 == 1:
+                raise timeout_exc
+            return ("", "")
+        mock_proc.communicate.side_effect = _communicate_side_effect
+        mock_proc.kill.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test timeout",
                 "--ai-command", "echo hi",
@@ -405,7 +423,7 @@ class TestMode3:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        with patch("subprocess.run", side_effect=FileNotFoundError()):
+        with patch("subprocess.Popen", side_effect=FileNotFoundError()):
             state = runner.main([
                 "--goal", "test cmd not found",
                 "--ai-command", "nonexistent_command --flag",
@@ -425,20 +443,22 @@ class TestMode3:
 
         call_count = [0]
 
-        def mock_run(*args, **kwargs):
+        def mock_popen(*args, **kwargs):
             call_count[0] += 1
-            result = MagicMock()
-            result.returncode = 0
-            result.stderr = ""
+            proc = MagicMock()
+            proc.kill.return_value = None
             if call_count[0] == 1:
-                result.stdout = "STATUS: success\nTRANSITION: goal_loaded"
+                proc.communicate.return_value = ("STATUS: success\nTRANSITION: goal_loaded", "")
+                proc.returncode = 0
             elif call_count[0] == 2:
-                result.stdout = "STATUS: success\nTRANSITION: plan_ready"
+                proc.communicate.return_value = ("STATUS: success\nTRANSITION: plan_ready", "")
+                proc.returncode = 0
             else:
-                result.stdout = "STATUS: success\nTRANSITION: done"
-            return result
+                proc.communicate.return_value = ("STATUS: success\nTRANSITION: done", "")
+                proc.returncode = 0
+            return proc
 
-        with patch("subprocess.run", side_effect=mock_run):
+        with patch("subprocess.Popen", side_effect=mock_popen):
             state = runner.main([
                 "--goal", "test terminal",
                 "--ai-command", "echo hi",
@@ -457,15 +477,18 @@ class TestMode3:
 
         captured_input = []
 
-        def mock_run(*args, **kwargs):
-            captured_input.append(kwargs.get("input", ""))
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = "STATUS: success\nTRANSITION: goal_loaded"
-            result.stderr = ""
-            return result
+        def mock_popen(*args, **kwargs):
+            proc = MagicMock()
+            proc.kill.return_value = None
 
-        with patch("subprocess.run", side_effect=mock_run):
+            def mock_communicate(input=None, timeout=None):
+                captured_input.append(input or "")
+                return ("STATUS: success\nTRANSITION: goal_loaded", "")
+            proc.communicate.side_effect = mock_communicate
+            proc.returncode = 0
+            return proc
+
+        with patch("subprocess.Popen", side_effect=mock_popen):
             runner.main([
                 "--goal", "context test",
                 "--ai-command", "claude --print",
@@ -997,15 +1020,16 @@ class TestReviewFixes:
 
         captured_args = []
 
-        def mock_run(cmd, **kwargs):
+        def mock_popen(cmd, **kwargs):
             captured_args.append(cmd)
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = "STATUS: success\nTRANSITION: goal_loaded"
-            result.stderr = ""
-            return result
+            proc = MagicMock()
+            proc.communicate.return_value = ("STATUS: success\nTRANSITION: goal_loaded", "")
+            proc.returncode = 0
+            proc.kill.return_value = None
+            proc.terminate.return_value = None
+            return proc
 
-        with patch("subprocess.run", side_effect=mock_run):
+        with patch("subprocess.Popen", side_effect=mock_popen):
             runner.main([
                 "--goal", "test shlex",
                 "--ai-command", 'claude --print --model "claude-3"',
@@ -1022,12 +1046,12 @@ class TestReviewFixes:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Some output without any transition info\nSTATUS: success"
-        mock_result.stderr = ""
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("Some output without any transition info\nSTATUS: success", "")
+        mock_proc.returncode = 0
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test fallback warning",
                 "--ai-command", "echo hi",
@@ -1045,12 +1069,12 @@ class TestReviewFixes:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "STATUS: success\nTRANSITION: nonexistent_condition"
-        mock_result.stderr = ""
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("STATUS: success\nTRANSITION: nonexistent_condition", "")
+        mock_proc.returncode = 0
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             runner.main([
                 "--goal", "test unmatched warning",
                 "--ai-command", "echo hi",
@@ -1102,12 +1126,12 @@ class TestReviewFixes:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = "TRANSITION: goal_loaded"
-        mock_result.stderr = "Error: API rate limited"
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("TRANSITION: goal_loaded", "Error: API rate limited")
+        mock_proc.returncode = 1
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test returncode",
                 "--ai-command", "claude --print",
@@ -1142,20 +1166,23 @@ class TestReviewFixes:
 
         call_count = [0]
 
-        def mock_run(*args, **kwargs):
+        def mock_popen(*args, **kwargs):
             call_count[0] += 1
-            result = MagicMock()
-            result.returncode = 0
-            result.stderr = ""
+            proc = MagicMock()
+            proc.kill.return_value = None
+            proc.terminate.return_value = None
             if call_count[0] == 1:
-                result.stdout = "STATUS: success\nTRANSITION: goal_loaded"
+                proc.communicate.return_value = ("STATUS: success\nTRANSITION: goal_loaded", "")
+                proc.returncode = 0
             elif call_count[0] == 2:
-                result.stdout = "STATUS: success\nTRANSITION: plan_ready"
+                proc.communicate.return_value = ("STATUS: success\nTRANSITION: plan_ready", "")
+                proc.returncode = 0
             else:
-                result.stdout = "STATUS: success\nTRANSITION: done"
-            return result
+                proc.communicate.return_value = ("STATUS: success\nTRANSITION: done", "")
+                proc.returncode = 0
+            return proc
 
-        with patch("subprocess.run", side_effect=mock_run):
+        with patch("subprocess.Popen", side_effect=mock_popen):
             state = runner.main([
                 "--goal", "test progress history",
                 "--ai-command", "echo hi",
@@ -1193,20 +1220,23 @@ class TestReviewFixes:
 
         call_count = [0]
 
-        def mock_run(*args, **kwargs):
+        def mock_popen(*args, **kwargs):
             call_count[0] += 1
-            result = MagicMock()
-            result.returncode = 0
-            result.stderr = ""
+            proc = MagicMock()
+            proc.kill.return_value = None
+            proc.terminate.return_value = None
             if call_count[0] == 1:
-                result.stdout = "STATUS: success\nTRANSITION: goal_loaded"
+                proc.communicate.return_value = ("STATUS: success\nTRANSITION: goal_loaded", "")
+                proc.returncode = 0
             elif call_count[0] == 2:
-                result.stdout = "STATUS: success\nTRANSITION: plan_ready"
+                proc.communicate.return_value = ("STATUS: success\nTRANSITION: plan_ready", "")
+                proc.returncode = 0
             else:
-                result.stdout = "STATUS: success\nTRANSITION: done"
-            return result
+                proc.communicate.return_value = ("STATUS: success\nTRANSITION: done", "")
+                proc.returncode = 0
+            return proc
 
-        with patch("subprocess.run", side_effect=mock_run):
+        with patch("subprocess.Popen", side_effect=mock_popen):
             state = runner.main([
                 "--goal", "test cap",
                 "--ai-command", "echo hi",

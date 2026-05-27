@@ -437,8 +437,11 @@ class ContextAssembler:
             if len(summary) <= max_chars:
                 return summary + "\n\n[TRUNCATED - see individual skill files for full content]"
 
-        # Hard truncate at max_chars
-        return content[:max_chars] + "\n...[TRUNCATED]"
+        # Hard truncate at last newline before max_chars to avoid splitting mid-line
+        cut_point = content.rfind("\n", 0, max_chars)
+        if cut_point <= 0:
+            cut_point = max_chars  # No newline found, hard cut
+        return content[:cut_point] + "\n...[TRUNCATED]"
 
     def _estimate_total_context_size(self, sections: list[str]) -> int:
         """Compute total character count from all sections.

@@ -120,13 +120,15 @@ class TestSignalHandler:
         with open(graph_file, "w") as f:
             yaml.safe_dump(graph_data, f)
 
-        # Mock subprocess.run to avoid actually calling a command
-        with patch("subprocess.run") as mock_run, \
+        # Mock subprocess.Popen to avoid actually calling a command
+        with patch("subprocess.Popen") as mock_popen, \
              patch("runner.KERNEL_ROOT", tmp_path), \
              patch("atexit.register"):
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout="TRANSITION: done", stderr=""
-            )
+            mock_proc = MagicMock()
+            mock_proc.communicate.return_value = ("TRANSITION: done", "")
+            mock_proc.returncode = 0
+            mock_proc.kill.return_value = None
+            mock_popen.return_value = mock_proc
             runner.main([
                 "--goal", "test",
                 "--ai-command", "echo test",
@@ -227,11 +229,13 @@ class TestAtexitHandler:
         with open(graph_file, "w") as f:
             yaml.safe_dump(graph_data, f)
 
-        with patch("subprocess.run") as mock_run, \
+        with patch("subprocess.Popen") as mock_popen, \
              patch("runner.KERNEL_ROOT", tmp_path):
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout="TRANSITION: done", stderr=""
-            )
+            mock_proc = MagicMock()
+            mock_proc.communicate.return_value = ("TRANSITION: done", "")
+            mock_proc.returncode = 0
+            mock_proc.kill.return_value = None
+            mock_popen.return_value = mock_proc
             runner.main([
                 "--goal", "test",
                 "--ai-command", "echo test",
@@ -429,7 +433,17 @@ class TestTimeoutHandling:
             output="partial output here", stderr="error output here"
         )
 
-        with patch("subprocess.run", side_effect=timeout_exc), \
+        mock_proc = MagicMock()
+        mock_proc.communicate.side_effect = timeout_exc
+        mock_proc.kill.return_value = None
+        # After kill, second communicate returns partial output
+        def _communicate_after_kill(*args, **kwargs):
+            if mock_proc.communicate.call_count > 1:
+                return ("partial output here", "error output here")
+            raise timeout_exc
+        mock_proc.communicate.side_effect = _communicate_after_kill
+
+        with patch("subprocess.Popen", return_value=mock_proc), \
              patch("runner.KERNEL_ROOT", tmp_path), \
              patch("signal.signal"), \
              patch("atexit.register"):
@@ -495,7 +509,19 @@ class TestTimeoutHandling:
             cmd="echo test", timeout=10
         )
 
-        with patch("subprocess.run", side_effect=timeout_exc), \
+        mock_proc = MagicMock()
+        mock_proc.communicate.side_effect = timeout_exc
+        mock_proc.kill.return_value = None
+        # After kill, second communicate returns empty
+        call_count = [0]
+        def _communicate_no_output(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] % 2 == 1:
+                raise timeout_exc
+            return ("", "")
+        mock_proc.communicate.side_effect = _communicate_no_output
+
+        with patch("subprocess.Popen", return_value=mock_proc), \
              patch("runner.KERNEL_ROOT", tmp_path), \
              patch("signal.signal"), \
              patch("atexit.register"):

@@ -485,12 +485,12 @@ class TestRunnerCallsFeedbackLoop:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "STATUS: success\nTRANSITION: goal_loaded"
-        mock_result.stderr = ""
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("STATUS: success\nTRANSITION: goal_loaded", "")
+        mock_proc.returncode = 0
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test feedback",
                 "--ai-command", "echo hello",
@@ -513,12 +513,12 @@ class TestRunnerCallsFeedbackLoop:
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "Error: rate limited"
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("", "Error: rate limited")
+        mock_proc.returncode = 1
+        mock_proc.kill.return_value = None
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_proc):
             state = runner.main([
                 "--goal", "test failure feedback",
                 "--ai-command", "echo hello",

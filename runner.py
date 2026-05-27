@@ -43,6 +43,7 @@ from kernel.bootstrap import BootstrapGenerator
 from kernel.context_assembler import ContextAssembler
 from kernel.contracts import OutputContractValidator
 from kernel.error_messages import format_error
+from kernel.event_detector import EventDetector
 from kernel.evolution.engine import EvolutionEngine
 from kernel.evolution.metrics import EvolutionMetrics
 from kernel.feedback_loop import FeedbackLoop
@@ -59,6 +60,9 @@ from memory.state_manager import StateManager
 
 
 KERNEL_ROOT = Path(__file__).parent
+
+# Module-level reference to the active subprocess for signal handler cleanup
+_active_subprocess = None  # type: subprocess.Popen | None
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -351,6 +355,16 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     # Register signal and atexit handlers for graceful shutdown in Mode 3
     if mode3:
         def _shutdown_handler(signum, frame):
+            global _active_subprocess
+            if _active_subprocess is not None:
+                try:
+                    _active_subprocess.terminate()
+                    _active_subprocess.wait(timeout=5)
+                except Exception:
+                    try:
+                        _active_subprocess.kill()
+                    except Exception:
+                        pass
             state_mgr.state["status"] = "interrupted"
             state_mgr.state.setdefault("errors", []).append(
                 "Execution interrupted by signal"
@@ -387,6 +401,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         feedback_loop = FeedbackLoop(
             memory_dir, reflector, evolution_engine, evolution_metrics
         )
+        event_detector = EventDetector(KERNEL_ROOT)
 
     # Build max_retries_map from graph nodes
     max_retries_map = {
@@ -424,6 +439,18 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                 print(f"  Prompt file: [not found]")
 
         if mode3:
+            # Check external events at start of execution
+            if i == 0:
+                external_events = event_detector.detect_external_changes(
+                    state_mgr.state.get("last_updated", "")
+                )
+                if external_events:
+                    for event in external_events:
+                        if event["type"] == "prompt_modified":
+                            event_detector.mark_user_owned(state_mgr.state, event["path"])
+                    if args.verbose:
+                        print(f"[INFO] Detected {len(external_events)} external change(s)", file=sys.stderr)
+
             # Mode 3: Track visit BEFORE execution so failures count
             state_mgr.track_node_visit(node["id"])
             is_stuck, stuck_node, visits = state_mgr.check_stuck(max_retries_map)
@@ -473,23 +500,54 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
 
         if mode3:
             # Mode 3: Real AI execution via subprocess
+            global _active_subprocess
             context_prompt = assembler.assemble(state, node, graph, knowledge)
             try:
-                result = subprocess.run(
+                proc = subprocess.Popen(
                     shlex.split(args.ai_command),
-                    input=context_prompt,
-                    capture_output=True,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     text=True,
-                    timeout=args.timeout,
                 )
-                if result.returncode != 0:
+                _active_subprocess = proc
+                try:
+                    stdout, stderr = proc.communicate(
+                        input=context_prompt, timeout=args.timeout
+                    )
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    stdout, stderr = proc.communicate()
+                    _active_subprocess = None
+                    timeout_detail = f"Timeout after {args.timeout}s on node {node['id']}"
+                    if stdout:
+                        timeout_detail += f" | partial stdout: {stdout[:200]}"
+                    if stderr:
+                        timeout_detail += f" | stderr: {stderr[:200]}"
+                    state_mgr.state.setdefault("errors", []).append(timeout_detail)
+                    state_mgr.trim_errors()
                     print(
-                        f"[ERROR] AI command exited with code {result.returncode}: "
-                        f"{result.stderr.strip()}",
+                        format_error(
+                            "timeout",
+                            seconds=str(args.timeout),
+                            node=node["id"],
+                        ),
+                        file=sys.stderr,
+                    )
+                    # Stay on same node - do not advance
+                    continue
+                _active_subprocess = None
+                result_returncode = proc.returncode
+                result_stdout = stdout
+                result_stderr = stderr
+                if result_returncode != 0:
+                    print(
+                        f"[ERROR] AI command exited with code {result_returncode}: "
+                        f"{result_stderr.strip()}",
                         file=sys.stderr,
                     )
                     state_mgr.state.setdefault("errors", []).append(
-                        f"AI command exited with code {result.returncode} on node {node['id']}"
+                        f"AI command exited with code {result_returncode} on node {node['id']}"
                     )
                     # Verbose: report failed iteration
                     if args.verbose:
@@ -499,7 +557,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     iteration_data = {
                         "node": node["id"],
                         "result": "failed",
-                        "errors": [f"AI command exited with code {result.returncode}"],
+                        "errors": [f"AI command exited with code {result_returncode}"],
                         "iteration": state_mgr.state.get("iteration_count", 0),
                     }
                     feedback_loop.run_cycle(iteration_data)
@@ -518,28 +576,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                         continue
                     else:  # "continue"
                         continue
-                ai_output = result.stdout
+                ai_output = result_stdout
                 transition_condition = _parse_transition(ai_output)
-            except subprocess.TimeoutExpired as e:
-                # subprocess.run already kills the child process on timeout in
-                # Python 3.12, but we log context for debugging.
-                timeout_detail = f"Timeout after {args.timeout}s on node {node['id']}"
-                if e.stdout:
-                    timeout_detail += f" | partial stdout: {e.stdout[:200]}"
-                if e.stderr:
-                    timeout_detail += f" | stderr: {e.stderr[:200]}"
-                state_mgr.state.setdefault("errors", []).append(timeout_detail)
-                state_mgr.trim_errors()
-                print(
-                    format_error(
-                        "timeout",
-                        seconds=str(args.timeout),
-                        node=node["id"],
-                    ),
-                    file=sys.stderr,
-                )
-                # Stay on same node - do not advance
-                continue
             except FileNotFoundError:
                 print(
                     f"Error: AI command not found: '{shlex.split(args.ai_command)[0]}'. "

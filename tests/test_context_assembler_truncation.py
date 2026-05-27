@@ -13,10 +13,11 @@ class TestTruncateSkillContent:
     """Tests for _truncate_skill_content method."""
 
     def test_truncates_oversized_content_with_marker(self, tmp_path: Path) -> None:
-        """Content exceeding max_chars is hard-truncated with marker."""
+        """Content exceeding max_chars is hard-truncated at line boundary with marker."""
         assembler = ContextAssembler(tmp_path)
         content = "A" * 500
         result = assembler._truncate_skill_content(content, 100)
+        # No newlines in content, so it falls back to hard cut at max_chars
         assert len(result.split("\n...[TRUNCATED]")[0]) == 100
         assert result.endswith("\n...[TRUNCATED]")
 
@@ -51,7 +52,7 @@ class TestTruncateSkillContent:
         assert result == content
 
     def test_summary_mode_falls_back_to_hard_truncate(self, tmp_path: Path) -> None:
-        """If summary is still too long, falls back to hard truncate."""
+        """If summary is still too long, falls back to hard truncate at line boundary."""
         assembler = ContextAssembler(tmp_path)
         # Create content where the intro+first section is still too long
         content = (
@@ -69,16 +70,21 @@ class TestTruncateSkillContent:
         )
         result = assembler._truncate_skill_content(content, 50)
         assert result.endswith("\n...[TRUNCATED]")
-        # The content before the marker should be exactly 50 chars
-        assert len(result.split("\n...[TRUNCATED]")[0]) == 50
+        # The content before the marker should be cut at the last newline before 50 chars
+        before_marker = result.split("\n...[TRUNCATED]")[0]
+        assert len(before_marker) <= 50
+        # Should cut at line boundary (last newline before max_chars)
+        assert before_marker.endswith("\n") or "\n" not in content[:50]
 
     def test_no_headings_hard_truncates(self, tmp_path: Path) -> None:
-        """Content without ## headings gets hard-truncated."""
+        """Content without ## headings gets hard-truncated at line boundary."""
         assembler = ContextAssembler(tmp_path)
         content = "No headings here, just plain text. " * 100
         result = assembler._truncate_skill_content(content, 200)
         assert result.endswith("\n...[TRUNCATED]")
-        assert len(result.split("\n...[TRUNCATED]")[0]) == 200
+        before_marker = result.split("\n...[TRUNCATED]")[0]
+        # No newlines in content, so falls back to hard cut at max_chars
+        assert len(before_marker) == 200
 
     def test_single_heading_hard_truncates(self, tmp_path: Path) -> None:
         """Content with only one ## heading gets hard-truncated."""
