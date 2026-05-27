@@ -25,10 +25,12 @@ Mode 3 (Real AI execution via subprocess): The runner assembles context from
 """
 
 import argparse
+import atexit
 import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -285,6 +287,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     # Reset node_visits on resume so stale counts don't trigger false stuck detection
     if args.resume:
         state_mgr.state["node_visits"] = {}
+        # If previous run was interrupted, reset status to running so execution continues
+        if state_mgr.state.get("status") == "interrupted":
+            state_mgr.state["status"] = "running"
 
     # Skill auto-selection
     if hasattr(args, "skills") and args.skills is not None:
@@ -341,6 +346,26 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
 
     # Determine execution mode
     mode3 = args.ai_command is not None and not args.dry_run
+
+    # Register signal and atexit handlers for graceful shutdown in Mode 3
+    if mode3:
+        def _shutdown_handler(signum, frame):
+            state_mgr.state["status"] = "interrupted"
+            state_mgr.state.setdefault("errors", []).append(
+                "Execution interrupted by signal"
+            )
+            state_mgr.save_state()
+            sys.exit(130)
+
+        signal.signal(signal.SIGINT, _shutdown_handler)
+        signal.signal(signal.SIGTERM, _shutdown_handler)
+
+        def _atexit_save():
+            if state_mgr.state.get("status") == "running":
+                state_mgr.state["status"] = "interrupted"
+                state_mgr.save_state()
+
+        atexit.register(_atexit_save)
 
     if args.dry_run:
         print(f"[DRY RUN] Goal: {args.goal}")
@@ -485,10 +510,15 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                         continue
                 ai_output = result.stdout
                 transition_condition = _parse_transition(ai_output)
-            except subprocess.TimeoutExpired:
-                state_mgr.state.setdefault("errors", []).append(
-                    f"Timeout after {args.timeout}s on node {node['id']}"
-                )
+            except subprocess.TimeoutExpired as e:
+                # subprocess.run already kills the child process on timeout in
+                # Python 3.12, but we log context for debugging.
+                timeout_detail = f"Timeout after {args.timeout}s on node {node['id']}"
+                if e.stdout:
+                    timeout_detail += f" | partial stdout: {e.stdout[:200]}"
+                if e.stderr:
+                    timeout_detail += f" | stderr: {e.stderr[:200]}"
+                state_mgr.state.setdefault("errors", []).append(timeout_detail)
                 state_mgr.trim_errors()
                 # Stay on same node - do not advance
                 continue
