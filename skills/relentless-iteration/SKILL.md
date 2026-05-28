@@ -7,373 +7,326 @@ description: "Multi-round critical iteration combining code hardening AND real-u
 
 ## What This Skill Does
 
-This skill runs repeated rounds of critical analysis on your code and UI. Each round, the AI adopts a different user persona (e.g., first-time user, impatient commuter, accessibility user), walks through your system, identifies real problems, implements fixes, and verifies them with tests. The cycle repeats until the system is robust and delightful.
+Runs repeated rounds of critical analysis on your code and UI. Each round, the AI adopts a different user persona, walks your system, finds real problems, implements fixes, and verifies with tests. Repeats until the system is robust.
 
-**Who this is for:** AI creators and developers who want their product stress-tested from multiple real-world perspectives, not just linted or code-reviewed.
+**Who this is for:** AI creators who want stress-testing from multiple real-world perspectives.
 
-**How to use it:** Type `/iterate` in your AI assistant chat. The AI will begin multi-round improvement automatically. See the Trigger section below for options.
+**How to use it:** Type `/iterate`. The AI begins multi-round improvement automatically.
+
+**Why this approach:** Ad-hoc prompting ("review my code") produces shallow single-perspective feedback. Structured iteration catches 3-5x more issues through forced perspective rotation, minimum round enforcement, and mandatory verification. Without structure, teams find the same surface issues while deep problems ship to production.
+
+---
+
+## When NOT to Use This
+
+- **No code yet:** Use brainstorming/design skills for greenfield ideation
+- **Single known bug:** Just fix it directly
+- **Documentation-only:** Use writing/editing skills
+- **Performance profiling:** Use dedicated profiling tools
+- **Backend with no UI:** Pass `backend` scope to skip UX checks
+
+**Time:** 10 rounds = 15-40 findings, 20-45 min. 20 rounds = 30-70 findings, 40-90 min.
 
 ---
 
 ## Trigger
 
-**Primary command:**
-
 ```
 /iterate [rounds] [scope] [strictness]
 ```
 
-**Examples with exact behavior:**
-
 | Command | Rounds | Scope | Strictness |
 |---------|--------|-------|------------|
-| `/iterate` | 10 | full-stack (frontend + backend + infra) | maximum |
+| `/iterate` | 10 | full-stack | maximum |
 | `/iterate 20` | 20 | full-stack | maximum |
-| `/iterate ui` | 10 | UI/UX files only (components, pages, styles) | maximum |
-| `/iterate backend` | 10 | Backend only (API, database, services) | maximum |
-| `/iterate mild` | 10 | full-stack | reduced (skip cosmetic issues, focus on critical bugs only) |
+| `/iterate ui` | 10 | UI/UX only | maximum |
+| `/iterate backend` | 10 | Backend only | maximum |
+| `/iterate mild` | 10 | full-stack | reduced (critical only) |
 | `/iterate 5 ui` | 5 | UI/UX only | maximum |
 
-**Alternative trigger phrases (Chinese + English):**
+**Alternative triggers:**
 
-| Phrase | Language | Meaning | Equivalent Command |
-|--------|----------|---------|-------------------|
-| 迭代 (die dai) | Chinese | "iterate" | `/iterate` |
-| 挑刺 (tiao ci) | Chinese | "find faults/nitpick" | `/iterate` with maximum strictness |
-| 优化循环 (you hua xun huan) | Chinese | "optimization loop" | `/iterate` |
-| polish | English | refine quality | `/iterate` |
-| keep iterating | English | continue rounds | `/iterate` |
-| keep improving | English | continue rounds | `/iterate` |
-| harden this | English | focus on robustness | `/iterate backend` |
-| stress test | English | find breaking points | `/iterate` with maximum strictness |
-| find problems | English | diagnostic focus | `/iterate` |
+| Phrase | Meaning |
+|--------|---------|
+| 迭代 (die dai) | "iterate" |
+| 挑刺 (tiao ci) | "find faults/nitpick" - max strictness |
+| 优化循环 (you hua xun huan) | "optimization loop" |
+| polish / keep improving | refine quality |
+| harden this | robustness focus (backend) |
+| stress test / find problems | find breaking points |
 
-**Activation rule:** This skill activates when the user message contains ANY of the above phrases, OR when the user explicitly requests repeated rounds of improvement on existing code.
+**Parameters:**
 
----
-
-## Parameters
-
-| Parameter | Default | Allowed Values | Description |
-|-----------|---------|----------------|-------------|
-| Rounds | 10 | 1-100 (integer) | Number of improvement cycles to execute |
-| Scope | full-stack | `full-stack`, `ui`, `backend`, `frontend`, `infra` | Which parts of the codebase to examine |
-| Strictness | maximum | `maximum`, `mild` | `maximum` = report all issues. `mild` = skip cosmetic, focus on critical/high only |
+| Parameter | Default | Values |
+|-----------|---------|--------|
+| Rounds | 10 | 1-100 |
+| Scope | full-stack | `full-stack`, `ui`, `backend`, `frontend`, `infra` |
+| Strictness | maximum | `maximum`, `mild` (critical/high only) |
 
 ---
 
 ## Process
 
-Execute the following steps in exact order. Do not skip steps. Do not reorder.
+### Step 1: Establish Baseline (once before Round 1)
 
-### Step 1: Establish Baseline (run once before Round 1)
+1. Run full test suite. Record: total tests, passes, fails, coverage %.
+2. Read entry points: config, app entry, routes, primary modules.
+3. List claimed capabilities from README/docs.
+4. Map user flows: every action from first visit to task completion.
 
-Complete ALL of the following before starting any round:
+If tests fail to run: fix as Round 0, then proceed.
 
-1. **Run the full test suite.** Record these exact values: total test count, pass count, fail count, coverage percentage.
-2. **Read entry point files.** Identify: main config files, app entry points, route definitions, and primary modules.
-3. **List claimed capabilities.** Read the README or docs. Write down every feature the project claims to have.
-4. **Map user-facing flows.** List every action a user can take, from first visit to task completion.
-
-If the test suite fails to run (missing dependencies, broken config): document the failure, fix it as Round 0, then proceed.
-
-### Step 2: Execute Rounds
-
-Repeat the following structure for each round (Round 1 through Round N):
+### Step 2: Execute Rounds (repeat 1 through N)
 
 #### 2a. Select Persona
 
-Pick the next persona from this pool. Rotate sequentially (Round 1 = Persona 1, Round 2 = Persona 2, etc.). After Persona 12, restart from Persona 1.
+Rotate sequentially. After 12, restart from 1.
 
-**Persona pool** (a fixed list of simulated user types, one per round):
-
-| # | Persona | What they need most | How they test the system |
-|---|---------|--------------------|-----------------------|
-| 1 | First-time user (never seen this product) | Understand value in 10 seconds, zero learning curve | Try to use the product with no prior knowledge |
-| 2 | Busy professional (commuting, using phone) | One-hand operation, results in under 5 taps | Attempt all tasks with one thumb on a 375px screen |
-| 3 | Deep researcher (heavy notes/data user) | Fast navigation, precise search, batch operations | Search for specific items, try to process 100+ items |
-| 4 | Retired elder (declining vision, 65+ years old) | Large fonts (16px+), high contrast, simple linear flows | Read all text at arm's length, avoid multi-step processes |
-| 5 | Non-native English speaker (mixed language input) | Clear terminology, contextual hints, no idioms | Enter mixed-language input, read all UI copy for clarity |
-| 6 | Screen reader user (keyboard-only navigation) | Complete ARIA labels, keyboard reachable elements, semantic HTML | Tab through every element, verify announcements |
-| 7 | Extremely impatient person (2-second attention span) | Instant feedback, zero perceived wait, visible progress | Abandon any flow that takes more than 2 seconds without feedback |
-| 8 | Perfectionist designer (pixel-level precision) | Consistent spacing, aligned elements, restrained animation | Inspect every pixel, check 8px grid alignment, verify consistency |
-| 9 | Steve Jobs (remove everything unnecessary) | Radical simplicity, only essential elements remain | For every element ask: "Does removing this break core function?" If no, remove it |
-| 10 | Competitor's user (just switched from Notion/Readwise) | Feature parity with alternatives, unique advantages visible | Compare each feature against the equivalent in competing products |
-| 11 | Malicious user (adversarial input) | Exploit security gaps, inject scripts, abuse rate limits | Submit XSS payloads, SQL injection, oversized inputs, rapid-fire requests |
-| 12 | DevOps engineer (3 AM production incident) | Observability, graceful degradation, fast recovery | Kill services, corrupt data, simulate network partition |
+| # | Persona | What they test |
+|---|---------|---------------|
+| 1 | First-time user | Zero-knowledge product use |
+| 2 | Busy commuter (phone) | One thumb, 375px, under 5 taps |
+| 3 | Heavy data user | Search, batch ops, 100+ items |
+| 4 | Elder (65+) | Large fonts, high contrast, simple flows |
+| 5 | Non-native speaker | Mixed-language input, clear terms |
+| 6 | Screen reader user | Keyboard-only, ARIA, semantic HTML |
+| 7 | Impatient (2s span) | Abandon without instant feedback |
+| 8 | Perfectionist designer | Pixel alignment, 8px grid, consistency |
+| 9 | Minimalist | Remove anything not breaking core function |
+| 10 | Competitor's user | Feature parity, unique advantages |
+| 11 | Malicious user | XSS, injection, oversized input, rapid-fire |
+| 12 | DevOps (3 AM incident) | Kill services, corrupt data, partitions |
 
 #### 2b. Walk the Full Flow
 
-Execute these actions as the selected persona:
+1. Open entry point. Attempt persona's primary task.
+2. Record every confusion, error, delay, missing feedback, broken flow.
+3. Note file:line for each issue.
 
-1. Open the application entry point (or primary file if CLI/library).
-2. Attempt to complete the persona's primary task (defined in "What they need most" column).
-3. Record every point where you encounter: confusion, errors, delays, missing feedback, broken flows.
-4. Note the file path and line number for each issue found.
-
-If the persona cannot complete their primary task: that is automatically a critical (high-severity) finding.
+Persona cannot complete task = automatic HIGH finding.
 
 #### 2c. Criticize
 
-Apply ALL of the following checklists. Mark each item as PASS or FAIL:
+Mark each PASS or FAIL:
 
-**Engineering checklist:**
+**Engineering:**
 
-| # | Question | If FAIL, severity |
-|---|----------|------------------|
-| 1 | Would this break in production under 100 concurrent users? | High |
-| 2 | Is there code that is defined but never called? | Medium |
-| 3 | Do the docs claim a feature that the code does not implement? | High |
-| 4 | What happens with malformed input / network timeout / null values? | High |
-| 5 | Are there implicit assumptions (hardcoded values, assumed environment)? | Medium |
+| # | Question | If FAIL |
+|---|----------|---------|
+| 1 | Breaks under 100 concurrent users? | High |
+| 2 | Dead code (defined, never called)? | Medium |
+| 3 | Docs claim unimplemented feature? | High |
+| 4 | Malformed input / timeout / null handling? | High |
+| 5 | Hardcoded values / assumed environment? | Medium |
 
-**UX checklist (the 5 dimensions from /ux-audit):**
+**UX (5 dimensions from /ux-audit):**
 
 | # | Dimension | Pass Criteria |
 |---|-----------|--------------|
-| 1 | Happy Path Flow | User completes primary task in under 3 clicks/commands without hesitation |
-| 2 | Blind User Intuition | Every UI element is understandable without reading documentation |
-| 3 | Edge Cases & Fault Tolerance | Rapid clicks, race conditions, offline mode all handled gracefully |
-| 4 | State Feedback | Every action produces visible feedback within 300ms |
-| 5 | Information Hierarchy | The most important element on each screen is visually dominant |
+| 1 | Happy Path | Primary task in under 3 clicks, no hesitation |
+| 2 | Intuition | Every element understandable without docs |
+| 3 | Fault Tolerance | Rapid clicks, race conditions, offline handled |
+| 4 | State Feedback | Visible feedback within 300ms |
+| 5 | Hierarchy | Most important element visually dominant |
 
-**Measurable standards checklist (verify every round):**
+**Measurable standards:**
 
-| Dimension | Pass Criteria | Measurement Method |
-|-----------|---------------|--------------------|
-| Information findability | User finds target content in under 3 seconds | Count seconds from page load to target |
-| First-time completion | User completes core task without instructions | Attempt task with zero prior context |
-| Error messages | Every error shows: what failed, why, and what to do next | Review all catch/error blocks |
-| Loading states | Operations over 300ms display skeleton or progress indicator | Check all async operations |
-| Empty states | Screens with no data show guidance on how to add data | Navigate to each empty state |
-| Touch targets | All clickable elements are at least 44x44 pixels | Measure element dimensions |
-| Color contrast | Body text ratio >= 4.5:1, large text >= 3:1 | Use contrast checker tool |
-| Responsive layout | No horizontal scroll or overlap at 375px, 768px, 1440px widths | Resize viewport and verify |
-| Animation purpose | Every animation communicates state change (not decoration) | Disable animations, check if meaning is lost |
-| Copy clarity | Zero jargon in user-facing text, all labels start with a verb | Read every visible string |
-| Behavior consistency | Same action produces same result everywhere in the app | Test same interaction in different locations |
-| Dangerous action safety | Delete/destructive actions require confirmation and offer undo | Trigger every destructive action |
-| Performance | First contentful paint under 1 second, interaction response under 100ms | Measure with performance tools |
+| Check | Pass |
+|-------|------|
+| Content findable in under 3s | Yes/No |
+| Core task done without instructions | Yes/No |
+| Errors show what/why/next-step | Yes/No |
+| Ops >300ms show progress | Yes/No |
+| Empty states show guidance | Yes/No |
+| Touch targets >= 44x44px | Yes/No |
+| Contrast >= 4.5:1 body, 3:1 large | Yes/No |
+| No overflow at 375px | Yes/No |
+| Zero jargon, verb-first labels | Yes/No |
+| Destructive actions need confirm+undo | Yes/No |
 
-Output: A numbered list of problems. Each problem must include:
-- Severity: `[HIGH]`, `[MEDIUM]`, or `[LOW]`
-- Location: file path and line number (or component name if no line number)
-- Description: one sentence stating what is wrong
-- Impact: one sentence stating what happens to users because of this
+Output per problem: `[HIGH/MEDIUM/LOW]` + file:line + description + impact.
 
 #### 2d. Propose Fixes
 
-For each problem found in Step 2c, write:
-1. **What is wrong** (one sentence)
-2. **Why it matters** (one sentence connecting to user impact)
-3. **Exact fix** (code change, config change, or file addition - must be implementable, not advisory)
+Per problem: what is wrong (1 sentence), why it matters (1 sentence), exact fix (implementable).
 
-If a problem has multiple possible fixes: choose the simplest one that fully resolves the issue.
+#### 2e. Implement & Verify
 
-#### 2e. Implement Fixes
+- Modify code, add/update tests, run full suite
+- Zero regressions: test count >= baseline, no new failures
+- Re-check fixes for introduced problems
+- Commit: `fix(scope): description (Round N)`
 
-Execute ALL proposed fixes from Step 2d:
-- Modify the code directly
-- Add or update tests for each fix
-- Run the full test suite after all fixes are applied
-- If any test fails: fix the regression before proceeding
+Do NOT proceed if verification fails. Fix first.
 
-**Zero regressions rule:** The test count must be >= the baseline from Step 1. No previously passing test may now fail.
+### Step 3: Escalation
 
-#### 2f. Verify
-
-After implementing fixes:
-1. Run the full test suite. Confirm: all tests pass, coverage >= baseline.
-2. Re-check each fix: does the fix introduce any new problem? If yes, fix it now (do not defer to next round).
-3. Commit with message format: `fix(scope): description (Round N)`
-
-If verification fails: do NOT proceed to the next round. Fix the issue first.
-
-### Step 3: Escalation Between Rounds
-
-Each round group focuses on progressively deeper issues:
-
-| Rounds | Focus Area | What to Look For |
-|--------|-----------|-----------------|
-| 1-2 | Surface layer | Missing error handling, obvious UX gaps, broken links, typos |
-| 3-4 | Structural layer | Architecture disconnects, dead code, broken interaction flows, missing tests |
-| 5-6 | Usability layer | First-run experience, documentation gaps, error message quality, accessibility |
-| 7-8 | Operational layer | Concurrency bugs, performance bottlenecks, observability gaps, graceful degradation |
-| 9-10 | Edge case layer | Adversarial inputs, real-world integration issues, visual polish |
-| 11+ | Diminishing returns | Apply stopping criteria (see Step 4) |
+| Rounds | Focus |
+|--------|-------|
+| 1-2 | Surface: error handling, broken links, obvious gaps |
+| 3-4 | Structural: architecture, dead code, missing tests |
+| 5-6 | Usability: first-run, docs, accessibility |
+| 7-8 | Operational: concurrency, performance, degradation |
+| 9-10 | Edge cases: adversarial input, integration, polish |
+| 11+ | Apply stopping criteria |
 
 ### Step 4: Stopping Criteria
 
-**Stop iterating when ALL of these conditions are true simultaneously:**
+Stop when ALL true simultaneously:
+1. Minimum rounds completed
+2. Coverage >= target (default 90%)
+3. Latest round: zero HIGH/MEDIUM issues
+4. New user completes primary task from docs alone
+5. Every claimed feature implemented and tested
+6. Two consecutive rounds: zero substantial findings
 
-1. Minimum rounds completed (default 10, or the number specified by user)
-2. Test coverage is at or above target (default 90%)
-3. The latest round found zero critical or high-severity issues
-4. A new user can complete the primary task end-to-end following only the docs
-5. Every feature claimed in docs is implemented and has at least one test
-6. Two consecutive rounds produced zero substantial findings (only cosmetic or no findings)
+If ANY false: continue. If rounds > 2x requested: stop, report remaining as "deferred."
 
-**If ANY condition is false:** execute another round.
+---
 
-**If rounds exceed 2x the requested amount** (e.g., 20 rounds when 10 were requested): stop and report remaining issues as "deferred" with severity and recommended priority.
+## Before/After Example
+
+**Before (Round 3 input):**
+```tsx
+// LoginForm.tsx - no loading, no error handling
+const handleSubmit = () => {
+  fetch('/api/login', { method: 'POST', body: JSON.stringify(form) })
+    .then(res => res.json())
+    .then(data => setUser(data))
+}
+```
+
+**Round 3 findings (Persona: Heavy data user):**
+1. [HIGH] LoginForm.tsx:4 - No loading state. User clicks multiple times.
+2. [HIGH] LoginForm.tsx:4 - No error handling. Network failure shows nothing.
+3. [MEDIUM] LoginForm.tsx:4 - No validation before submit.
+
+**After (Round 3 output):**
+```tsx
+const handleSubmit = async () => {
+  if (!form.email || !form.password) return setError('Email and password required')
+  setLoading(true); setError(null)
+  try {
+    const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify(form) })
+    if (!res.ok) throw new Error(`Login failed: ${res.statusText}`)
+    setUser(await res.json())
+  } catch (e) {
+    setError(e.message + '. Check connection and retry.')
+  } finally { setLoading(false) }
+}
+```
+
+One round, one persona, 3 findings fixed. Multiply by 10 rounds across 12 personas.
 
 ---
 
 ## Output Format
 
-### Per-Round Output
+### Per-Round
 
 ```markdown
 ## Round N: [Persona Name]
 
-### Philosophy Layer
-> Eastern philosophy principle guiding this round's approach
-> Connection to concrete action: [one sentence linking principle to what we will do]
-
 ### Findings
-1. [HIGH/MEDIUM/LOW] Specific problem (file:line or component name)
+1. [HIGH/MEDIUM/LOW] Problem (file:line)
    - Impact: what happens to users
-2. ...
 
 ### Fixes Applied
-- file:line - what was changed and why (one sentence each)
+- file:line - what changed and why
 
 ### Verification
-- Tests: X total, Y passed, Z added this round
-- Coverage: N%
-- Commit: `fix(scope): message (Round N)`
-
-### Simplicity Check
-> One sentence: Did this round make the product simpler or more complex? If more complex, justify why.
+- Tests: X passed, Z added | Coverage: N% | Commit: `fix(scope): msg (Round N)`
 ```
 
-### Final Summary (after all rounds complete)
+### Final Summary
 
 ```markdown
 ## Iteration Complete
-
-### Statistics
-- Rounds executed: N
-- Total problems found: X (HIGH: a, MEDIUM: b, LOW: c)
-- Problems fixed: Y
-- Tests added: Z
+- Rounds: N | Found: X (H:a M:b L:c) | Fixed: Y | Tests added: Z
 - Coverage: before% -> after%
 
-### Before/After Comparison
-| Metric | Before | After | Change |
-|--------|--------|-------|--------|
-| Test count | ... | ... | +N |
-| Coverage % | ... | ... | +N% |
-| Known issues | ... | ... | -N |
-| Critical bugs | ... | ... | -N |
+| Metric | Before | After |
+|--------|--------|-------|
+| Tests | ... | +N |
+| Coverage | ... | +N% |
+| Known issues | ... | -N |
 
-### Remaining Limitations (unfixed)
-- [severity] description - reason not fixed (e.g., requires external dependency, out of scope)
-
-### Recommended Next Steps
-1. Highest priority remaining issue and suggested approach
-2. ...
+### Remaining: [severity] description - reason unfixed
+### Next Steps: 1. ... 2. ...
 ```
 
 ---
 
 ## Philosophy
 
-These Eastern philosophy principles guide the iteration approach. Each principle connects to a concrete behavior:
+Each principle connects to a concrete rule:
 
-### Dao (The Way) - Simplification Principles
-
-| Principle | Chinese | Meaning | Concrete Rule |
-|-----------|---------|---------|---------------|
-| Simplicity is the ultimate sophistication | 大道至简 (da dao zhi jian) | The best solution is the simplest one | Every fix must reduce total code lines OR reduce user steps. If a fix adds complexity, find a simpler alternative. |
-| Serve without competing | 水利万物而不争 (shui li wan wu er bu zheng) | Good UX is invisible - users achieve goals without noticing the tool | Remove all UI elements that draw attention to the tool rather than the user's task. |
-| Less yields more | 少则得，多则惑 (shao ze de, duo ze huo) | Every element must justify its existence | Before adding any element, verify: removing it would break a user's ability to complete their task. If not, do not add it. |
-
-### Strategy (The Art of War) - Tactical Principles
-
-| Principle | Chinese | Meaning | Concrete Rule |
-|-----------|---------|---------|---------------|
-| Know yourself and your enemy | 知己知彼 (zhi ji zhi bi) | Understand both the system's state and the user's context | Before each round, re-read the current state of the code. Do not assume it matches your memory. |
-| Win before fighting | 先胜后战 (xian sheng hou zhan) | Plan the fix before writing code | Write the fix description in Step 2d before touching any code in Step 2e. |
-| Speed is respect | 兵贵神速 (bing gui shen su) | Minimize the user's time cost at every interaction | Every user-facing operation must complete or show feedback within 300ms. |
-| Adapt to what you find | 因敌变化而取胜 (yin di bian hua er qu sheng) | Change strategy based on what each round reveals | If Round N finds mostly UX issues, shift Round N+1 to deeper UX investigation rather than following the default escalation. |
-
-### The Simplicity Standard
-
-Apply these three questions to every change:
-
-1. **Could a non-technical person use this feature without help?** If no, simplify until they can.
-2. **Does every visible element serve the user's immediate goal?** If no, remove it.
-3. **Does every interaction feel instant and predictable?** If no, add feedback or reduce latency.
+| Principle | Chinese | Rule |
+|-----------|---------|------|
+| Simplicity is sophistication | 大道至简 (da dao zhi jian) | Every fix reduces code lines OR user steps |
+| Serve without competing | 水利万物而不争 (shui li wan wu er bu zheng) | Remove UI that draws attention to tool over task |
+| Less yields more | 少则得，多则惑 (shao ze de, duo ze huo) | If removing element doesn't break task, don't add it |
+| Know yourself and enemy | 知己知彼 (zhi ji zhi bi) | Re-read code before each round, never assume |
+| Speed is respect | 兵贵神速 (bing gui shen su) | Every operation: feedback within 300ms |
+| Adapt to findings | 因敌变化而取胜 (yin di bian hua er qu sheng) | Shift focus based on what each round reveals |
 
 ---
 
-## Quality Targets
+## Anti-Patterns
 
-| Metric | Minimum Acceptable | Ideal Target |
-|--------|-------------------|--------------|
-| Test coverage | 90% | 98%+ |
-| Rounds executed | User-specified (default 10) | Until all stopping criteria met |
-| Regressions introduced | 0 | 0 |
-| HIGH issues remaining at end | 0 | 0 |
-| MEDIUM issues remaining at end | 3 or fewer | 0 |
-
----
-
-## Anti-Patterns (Never Do These)
-
-| Anti-Pattern | Why It Fails | Do This Instead |
-|--------------|-------------|-----------------|
-| Adding code without finding a real problem first | Creates bloat with no user benefit | Always identify the problem before writing any fix |
-| Fixing cosmetic issues while structural problems remain | Ignores root causes | Fix HIGH severity before MEDIUM, MEDIUM before LOW |
-| Writing tests that test the framework, not the system | Inflates coverage without catching real bugs | Every test must simulate a real user action or real input |
-| Stopping after 1-2 rounds because "it looks fine" | Surface review misses deep issues | Complete minimum rounds regardless of initial impressions |
-| Sugarcoating: "this could potentially be improved" | Avoids accountability | State directly: "This is broken because X. Fix: Y." |
-| Adding features disguised as fixes (scope creep) | Changes requirements mid-iteration | If a new feature is needed, log it as a separate task, do not implement it in this iteration |
-| Praising code quality without evidence | Wastes output space | Only state quality claims with specific evidence (test results, metrics) |
-| Paper-only analysis without code changes | Produces reports but no improvement | Every round must commit at least one code change (or explicitly state "zero issues found") |
+| Don't | Do Instead |
+|-------|-----------|
+| Add code without finding a problem | Problem first, then fix |
+| Fix cosmetic while structural remains | HIGH > MEDIUM > LOW |
+| Test the framework, not the system | Test real user actions |
+| Stop early ("looks fine") | Complete minimum rounds |
+| Sugarcoat ("could be improved") | "Broken because X. Fix: Y." |
+| Add features as fixes | Log features separately |
+| Analyze without changing code | Every round commits changes |
 
 ---
 
-## Integration with Other Skills
+## Customization
 
-| Skill | Relationship | How They Work Together |
-|-------|-------------|----------------------|
-| `/ux-audit` | Diagnostic input | `/ux-audit` produces a problem report. `/iterate` takes that report and fixes every issue in a loop. Run `/ux-audit` first for diagnosis, then `/iterate` for treatment. |
-| Other analysis skills | Can feed findings | Any skill that produces a list of issues can feed into `/iterate` as the initial problem list for Round 1. |
+**You can change:**
+- **Rounds:** `/iterate N` (1-100)
+- **Scope:** `ui`, `backend`, `frontend`, `infra`
+- **Strictness:** `mild` for critical-only
+- **Personas:** Add to pool table: `| # | Name | What they test |`
+- **Checklists:** Add rows to any table for domain concerns
+- **Stopping criteria:** Add conditions to the list
+- **Quality targets:** Adjust coverage/thresholds
+
+**Must stay fixed:**
+- Round structure: persona -> walk -> criticize -> propose -> implement -> verify
+- Zero regressions rule
+- Severity classification (HIGH/MEDIUM/LOW)
+- Verification step every round
+
+**Composability:**
+- Single focus: `/iterate ui` with UX checklist only
+- Skill chaining: any skill's issue list feeds Round 1 input
+- Single persona: "use persona 11 for all rounds" = security focus
+- Pipeline: `/ux-audit` (diagnosis) then `/iterate` (treatment)
 
 ---
 
-## Invocation Examples
+## CI/Workflow Integration
+
+Structured output enables:
+- **GitHub Issues:** HIGH findings = issues with severity label
+- **PR comments:** file:line enables inline review comments
+- **Sprint planning:** MEDIUM = backlog items
+- **CI gate:** `/iterate 3 mild` as pre-merge quality check
+
+---
+
+## Examples
 
 ```
-User: "/iterate"
-→ 10 rounds, full-stack scope, maximum strictness
-
-User: "/iterate 20 ui"
-→ 20 rounds, UI/UX files only, maximum strictness
-
-User: "迭代这个页面，挑刺，至少10轮"
-→ Translation: "Iterate this page, find faults, at least 10 rounds"
-→ 10 rounds, scope = current page files, maximum strictness
-
-User: "Keep iterating on this until it's production quality"
-→ 10 rounds minimum, full-stack, stop only when all stopping criteria met
-
-User: "Stress test this codebase, find every problem"
-→ 10 rounds, full-stack, maximum strictness, focus on edge cases
-
-User: "用挑刺者角度分析问题然后修复，不断循环"
-→ Translation: "Analyze problems from a fault-finder's perspective, then fix, continuous loop"
-→ 10 rounds, full-stack, maximum strictness
-
-User: "Harden this system, I want 90%+ coverage and zero known bugs"
-→ 10 rounds, full-stack, maximum strictness, coverage target = 90%
-
-User: "Polish this UI, simulate real users"
-→ 10 rounds, UI scope, rotate through user personas
-
-User: "这个页面体验不好，帮我迭代优化"
-→ Translation: "This page has bad UX, help me iterate and optimize"
-→ 10 rounds, scope = current page, maximum strictness, UX focus
+User: "/iterate" -> 10 rounds, full-stack, max strictness
+User: "/iterate 20 ui" -> 20 rounds, UI only
+User: "迭代这个页面，挑刺" -> "Iterate this page, nitpick" -> max strictness
+User: "Keep iterating until production quality" -> stop when criteria met
+User: "用挑刺者角度分析修复，不断循环" -> "Nitpick, fix, loop" -> full iteration
 ```
