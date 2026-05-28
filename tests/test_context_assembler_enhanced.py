@@ -212,6 +212,27 @@ def _make_assembler_env(tmp_path: Path) -> Path:
                 "transitions": [{"to": "plan", "condition": "goal_loaded"}],
                 "max_retries": 1,
             },
+            {
+                "id": "plan",
+                "prompt_file": "prompts/orchestrator.md",
+                "description": "Plan",
+                "transitions": [{"to": "code", "condition": "plan_ready"}],
+                "max_retries": 1,
+            },
+            {
+                "id": "code",
+                "prompt_file": "prompts/orchestrator.md",
+                "description": "Code",
+                "transitions": [{"to": "reflect", "condition": "code_written"}],
+                "max_retries": 1,
+            },
+            {
+                "id": "reflect",
+                "prompt_file": "prompts/orchestrator.md",
+                "description": "Reflect",
+                "transitions": [{"to": "plan", "condition": "no_evolution_needed"}],
+                "max_retries": 1,
+            },
         ],
         "default_start": "init",
     }
@@ -276,11 +297,11 @@ class TestAssembleIncludesNewSections:
         graph = GraphExecutor(str(env / "kernel" / "graph.yaml"))
         knowledge = KnowledgeStore(str(env / "knowledge"))
         state = {
-            "current_node": "init", "goal": "test", "iteration_count": 0,
+            "current_node": "plan", "goal": "test", "iteration_count": 0,
             "max_iterations": 30, "status": "running", "errors": [],
             "context": {"skills_loaded": [], "current_task": "", "phase": "startup"},
         }
-        node = graph.get_current_node(state)
+        node = graph.get_node("plan")
         result = assembler.assemble(state, node, graph, knowledge)
         assert "=== PLAN ===" in result
         assert "# My Plan" in result
@@ -299,12 +320,12 @@ class TestAssembleIncludesNewSections:
         graph = GraphExecutor(str(env / "kernel" / "graph.yaml"))
         knowledge = KnowledgeStore(str(env / "knowledge"))
         state = {
-            "current_node": "init", "goal": "test", "iteration_count": 0,
+            "current_node": "code", "goal": "test", "iteration_count": 0,
             "max_iterations": 30, "status": "running", "errors": [],
             "workspace_path": str(workspace),
             "context": {"skills_loaded": [], "current_task": "", "phase": "startup"},
         }
-        node = graph.get_current_node(state)
+        node = graph.get_node("code")
         result = assembler.assemble(state, node, graph, knowledge)
         assert "=== WORKSPACE MANIFEST ===" in result
         assert "main.py" in result
@@ -326,11 +347,11 @@ class TestAssembleIncludesNewSections:
         graph = GraphExecutor(str(env / "kernel" / "graph.yaml"))
         knowledge = KnowledgeStore(str(env / "knowledge"))
         state = {
-            "current_node": "init", "goal": "test", "iteration_count": 0,
+            "current_node": "reflect", "goal": "test", "iteration_count": 0,
             "max_iterations": 30, "status": "running", "errors": [],
             "context": {"skills_loaded": [], "current_task": "", "phase": "startup"},
         }
-        node = graph.get_current_node(state)
+        node = graph.get_node("reflect")
         result = assembler.assemble(state, node, graph, knowledge)
         assert "=== RECENT DECISIONS ===" in result
         assert "Use REST API" in result
@@ -397,10 +418,17 @@ class TestTokenBudgeting:
             "max_iterations": 30, "status": "running", "errors": [],
             "context": {"skills_loaded": [], "current_task": "", "phase": "startup"},
         }
-        node = graph.get_current_node(state)
+        # Use node without id for backward compat (all sections included)
+        node = {"prompt_file": "prompts/orchestrator.md", "description": "Test"}
+
+        class _MockGraph:
+            def get_prompt_for_node(self, node_id):
+                return "prompts/orchestrator.md"
+
+        mock_graph = _MockGraph()
 
         # First assemble with large budget to get full size
-        full_result = assembler.assemble(state, node, graph, knowledge, token_budget=100000)
+        full_result = assembler.assemble(state, node, mock_graph, knowledge, token_budget=100000)
         assert "=== RECENT DECISIONS ===" in full_result
 
         # Now use a tight budget that forces decisions to be dropped
@@ -409,7 +437,7 @@ class TestTokenBudgeting:
         # Set budget to full_tokens minus enough to force decisions removal
         tight_budget = full_tokens - 50
 
-        result = assembler.assemble(state, node, graph, knowledge, token_budget=tight_budget)
+        result = assembler.assemble(state, node, mock_graph, knowledge, token_budget=tight_budget)
         # Decisions should be dropped first
         assert "=== RECENT DECISIONS ===" not in result
         # But progress and plan should still be there
@@ -497,10 +525,17 @@ class TestTokenBudgeting:
             "max_iterations": 30, "status": "running", "errors": [],
             "context": {"skills_loaded": [], "current_task": "", "phase": "startup"},
         }
-        node = graph.get_current_node(state)
+        # Use node without id for backward compat (all sections included)
+        node = {"prompt_file": "prompts/orchestrator.md", "description": "Test"}
+
+        class _MockGraph:
+            def get_prompt_for_node(self, node_id):
+                return "prompts/orchestrator.md"
+
+        mock_graph = _MockGraph()
 
         # Large budget should keep everything
-        result = assembler.assemble(state, node, graph, knowledge, token_budget=100000)
+        result = assembler.assemble(state, node, mock_graph, knowledge, token_budget=100000)
         assert "=== PROGRESS ===" in result
         assert "=== PLAN ===" in result
         assert "=== RECENT DECISIONS ===" in result

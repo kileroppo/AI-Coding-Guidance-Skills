@@ -592,6 +592,13 @@ class TestContextAssemblerIncludesHistoryAndReflections:
                     "transitions": [],
                     "max_retries": 1,
                 },
+                {
+                    "id": "reflect",
+                    "prompt_file": "prompts/orchestrator.md",
+                    "description": "Reflect",
+                    "transitions": [],
+                    "max_retries": 1,
+                },
             ],
             "default_start": "init",
             "max_iterations": 30,
@@ -614,8 +621,8 @@ class TestContextAssemblerIncludesHistoryAndReflections:
         knowledge_store = KnowledgeStore(str(knowledge_dir))
 
         assembler = ContextAssembler(tmp_path)
-        state = {"current_node": "init", "goal": "test", "iteration_count": 0}
-        node = {"id": "init"}
+        state = {"current_node": "reflect", "goal": "test", "iteration_count": 0}
+        node = {"id": "reflect"}
 
         result = assembler.assemble(state, node, graph_executor, knowledge_store)
 

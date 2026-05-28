@@ -402,6 +402,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             memory_dir, reflector, evolution_engine, evolution_metrics
         )
         event_detector = EventDetector(KERNEL_ROOT)
+        retry_lightweight = False
+        _last_was_lightweight = False
 
     # Build max_retries_map from graph nodes
     max_retries_map = {
@@ -501,7 +503,26 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         if mode3:
             # Mode 3: Real AI execution via subprocess
             global _active_subprocess
-            context_prompt = assembler.assemble(state, node, graph, knowledge)
+            if retry_lightweight:
+                # Build minimal prompt for format-only retry
+                transitions = graph.get_available_transitions(node["id"])
+                valid_conditions = ", ".join(
+                    t.get("condition", "") for t in transitions if t.get("condition")
+                )
+                context_prompt = (
+                    "Your previous output was rejected because it is missing "
+                    "required format lines.\n"
+                    "Please output ONLY these two lines now:\n\n"
+                    "STATUS: success\n"
+                    f"TRANSITION: <condition>\n\n"
+                    f"Current node: {node['id']}\n"
+                    f"Valid TRANSITION values: {valid_conditions}\n"
+                )
+                retry_lightweight = False
+                _last_was_lightweight = True
+            else:
+                context_prompt = assembler.assemble(state, node, graph, knowledge)
+                _last_was_lightweight = False
             try:
                 proc = subprocess.Popen(
                     shlex.split(args.ai_command),
@@ -610,6 +631,14 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     f"{contract_result.violations}"
                 )
                 state_mgr.trim_errors()
+                # Check if violations are about missing format lines
+                has_format_violation = any(
+                    "Missing required TRANSITION" in v
+                    or "Missing required STATUS" in v
+                    for v in contract_result.violations
+                )
+                if has_format_violation and not _last_was_lightweight:
+                    retry_lightweight = True
                 # Stay on same node - do not advance
                 continue
 

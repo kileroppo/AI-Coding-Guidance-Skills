@@ -186,6 +186,13 @@ class TestContextAssembler:
                     "transitions": [],
                     "max_retries": 1,
                 },
+                {
+                    "id": "reflect",
+                    "prompt_file": "prompts/orchestrator.md",
+                    "description": "Reflect",
+                    "transitions": [],
+                    "max_retries": 1,
+                },
             ],
             "default_start": "init",
         }
@@ -249,10 +256,10 @@ class TestContextAssembler:
         assembler = ContextAssembler(assembler_env)
         graph = GraphExecutor(str(assembler_env / "kernel" / "graph.yaml"))
         knowledge = KnowledgeStore(str(assembler_env / "knowledge"))
-        state = {"current_node": "init", "goal": "test", "iteration_count": 0,
+        state = {"current_node": "reflect", "goal": "test", "iteration_count": 0,
                  "max_iterations": 30, "status": "running", "errors": [],
                  "context": {"skills_loaded": [], "current_task": "", "phase": "startup"}}
-        node = graph.get_current_node(state)
+        node = graph.get_node("reflect")
         result = assembler.assemble(state, node, graph, knowledge)
         assert "=== PHILOSOPHY: DAO ===" in result
         assert "Simplicity is key." in result

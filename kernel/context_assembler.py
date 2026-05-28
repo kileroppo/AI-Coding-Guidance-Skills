@@ -24,6 +24,25 @@ class ContextAssembler:
         self.kernel_root = kernel_root
         self.max_skill_content_chars = max_skill_content_chars
 
+    def _should_include(self, section_key: str, node_id: str | None,
+                        tier_rules: dict) -> bool:
+        """Check if a section should be included for the given node.
+
+        Args:
+            section_key: The key identifying the section in tier_rules.
+            node_id: The current node ID, or None for backward compat.
+            tier_rules: Dict mapping section keys to allowed node ID lists.
+
+        Returns:
+            True if the section should be included.
+        """
+        if node_id is None:
+            return True
+        allowed = tier_rules.get(section_key)
+        if allowed is None:
+            return True
+        return node_id in allowed
+
     def assemble(self, state: dict, node: dict, graph_executor: Any,
                  knowledge_store: Any, token_budget: int = 32000) -> str:
         """Assemble full context from BOOT.md + state + node prompt + philosophy + skills.
@@ -40,27 +59,49 @@ class ContextAssembler:
         Returns:
             A single formatted string with all context sections.
         """
+        node_id = node.get("id", None)
+
+        # Tiering rules: section_key -> list of allowed node IDs, or None for all nodes
+        tier_rules = {
+            "boot": ["init"],
+            "constitution": ["init"],
+            "dao": ["reflect", "evolve"],
+            "strategy": ["plan", "reflect"],
+            "output_format": None,
+            "evolution_history": ["reflect", "evolve"],
+            "recent_reflections": ["reflect"],
+            "node_prompt": None,
+            "state_summary": None,
+            "current_task": ["code", "test", "review"],
+            "plan": ["plan", "code"],
+            "workspace_manifest": ["code", "test", "review"],
+            "decisions": ["reflect"],
+        }
+
         sections = []
 
         # 1. BOOT.md (core)
-        boot_path = self.kernel_root / "kernel" / "BOOT.md"
-        boot_content = self._read_file(boot_path)
-        sections.append(f"=== BOOT SEQUENCE ===\n\n{boot_content}")
+        if self._should_include("boot", node_id, tier_rules):
+            boot_path = self.kernel_root / "kernel" / "BOOT.md"
+            boot_content = self._read_file(boot_path)
+            sections.append(f"=== BOOT SEQUENCE ===\n\n{boot_content}")
 
         # 2. Constitution (core)
-        const_path = self.kernel_root / "kernel" / "constitution.md"
-        const_content = self._read_file(const_path)
-        if const_content and not const_content.startswith("(file not found"):
-            sections.append(f"=== CONSTITUTION (IMMUTABLE) ===\n\n{const_content}")
+        if self._should_include("constitution", node_id, tier_rules):
+            const_path = self.kernel_root / "kernel" / "constitution.md"
+            const_content = self._read_file(const_path)
+            if const_content and not const_content.startswith("(file not found"):
+                sections.append(f"=== CONSTITUTION (IMMUTABLE) ===\n\n{const_content}")
 
-        # 3. Current state summary (core)
+        # 3. Current state summary (core - always included)
         state_summary = self._format_state(state)
         sections.append(f"=== CURRENT STATE ===\n\n{state_summary}")
 
         # 4. Current task from tasks.yaml (core)
-        current_task = self._load_current_task()
-        if current_task:
-            sections.append(f"=== CURRENT TASK ===\n\n{current_task}")
+        if self._should_include("current_task", node_id, tier_rules):
+            current_task = self._load_current_task()
+            if current_task:
+                sections.append(f"=== CURRENT TASK ===\n\n{current_task}")
 
         # 4b. Progress (trimmable - priority 4, removed last among trimmable)
         progress_content = self._load_progress()
@@ -69,42 +110,47 @@ class ContextAssembler:
             progress_section = f"=== PROGRESS ===\n\n{progress_content}"
 
         # 4c. Plan (trimmable - priority 3)
-        plan_content = self._load_plan()
         plan_section = ""
-        if plan_content:
-            plan_section = f"=== PLAN ===\n\n{plan_content}"
+        if self._should_include("plan", node_id, tier_rules):
+            plan_content = self._load_plan()
+            if plan_content:
+                plan_section = f"=== PLAN ===\n\n{plan_content}"
 
         # 4d. Workspace Manifest (trimmable - priority 2)
-        workspace_path = state.get("workspace_path", "")
-        workspace_content = self._load_workspace_manifest(workspace_path)
         workspace_section = ""
-        if workspace_content:
-            workspace_section = f"=== WORKSPACE MANIFEST ===\n\n{workspace_content}"
+        if self._should_include("workspace_manifest", node_id, tier_rules):
+            workspace_path = state.get("workspace_path", "")
+            workspace_content = self._load_workspace_manifest(workspace_path)
+            if workspace_content:
+                workspace_section = f"=== WORKSPACE MANIFEST ===\n\n{workspace_content}"
 
         # 4e. Recent Decisions (trimmable - priority 1, removed first)
-        decisions_content = self._load_recent_decisions()
         decisions_section = ""
-        if decisions_content:
-            decisions_section = f"=== RECENT DECISIONS ===\n\n{decisions_content}"
+        if self._should_include("decisions", node_id, tier_rules):
+            decisions_content = self._load_recent_decisions()
+            if decisions_content:
+                decisions_section = f"=== RECENT DECISIONS ===\n\n{decisions_content}"
 
-        # 5. Current node's prompt file (core)
-        prompt_file = graph_executor.get_prompt_for_node(node["id"])
+        # 5. Current node's prompt file (core - always included)
+        prompt_file = graph_executor.get_prompt_for_node(node.get("id", ""))
         if prompt_file:
             prompt_path = self.kernel_root / "kernel" / prompt_file
             prompt_content = self._read_file(prompt_path)
         else:
             prompt_content = "(no prompt file configured for this node)"
-        sections.append(f"=== NODE PROMPT ({node['id']}) ===\n\n{prompt_content}")
+        sections.append(f"=== NODE PROMPT ({node.get('id', 'unknown')}) ===\n\n{prompt_content}")
 
         # 6. Philosophy - dao.md
-        dao_path = self.kernel_root / "kernel" / "philosophy" / "dao.md"
-        dao_content = self._read_file(dao_path)
-        sections.append(f"=== PHILOSOPHY: DAO ===\n\n{dao_content}")
+        if self._should_include("dao", node_id, tier_rules):
+            dao_path = self.kernel_root / "kernel" / "philosophy" / "dao.md"
+            dao_content = self._read_file(dao_path)
+            sections.append(f"=== PHILOSOPHY: DAO ===\n\n{dao_content}")
 
         # 7. Philosophy - strategy.md
-        strategy_path = self.kernel_root / "kernel" / "philosophy" / "strategy.md"
-        strategy_content = self._read_file(strategy_path)
-        sections.append(f"=== PHILOSOPHY: STRATEGY ===\n\n{strategy_content}")
+        if self._should_include("strategy", node_id, tier_rules):
+            strategy_path = self.kernel_root / "kernel" / "philosophy" / "strategy.md"
+            strategy_content = self._read_file(strategy_path)
+            sections.append(f"=== PHILOSOPHY: STRATEGY ===\n\n{strategy_content}")
 
         # 8. Skills loaded in state
         skills_loaded = state.get("context", {}).get("skills_loaded", [])
@@ -112,7 +158,7 @@ class ContextAssembler:
             skills_section = self._load_skills(skills_loaded, knowledge_store)
             sections.append(f"=== LOADED SKILLS ===\n\n{skills_section}")
 
-        # 9. Output format contract
+        # 9. Output format contract (always included)
         contract_path = self.kernel_root / "kernel" / "contracts" / "output_format.md"
         contract_content = self._read_file(contract_path)
         if not contract_content.startswith("(file not found"):
@@ -121,18 +167,20 @@ class ContextAssembler:
             )
 
         # 10. Evolution history
-        evolution_history = self._load_evolution_history(count=5)
-        if evolution_history:
-            sections.append(
-                f"=== EVOLUTION HISTORY ===\n\n{evolution_history}"
-            )
+        if self._should_include("evolution_history", node_id, tier_rules):
+            evolution_history = self._load_evolution_history(count=5)
+            if evolution_history:
+                sections.append(
+                    f"=== EVOLUTION HISTORY ===\n\n{evolution_history}"
+                )
 
         # 11. Recent reflections
-        recent_reflections = self._load_recent_reflections(count=3)
-        if recent_reflections:
-            sections.append(
-                f"=== RECENT REFLECTIONS ===\n\n{recent_reflections}"
-            )
+        if self._should_include("recent_reflections", node_id, tier_rules):
+            recent_reflections = self._load_recent_reflections(count=3)
+            if recent_reflections:
+                sections.append(
+                    f"=== RECENT REFLECTIONS ===\n\n{recent_reflections}"
+                )
 
         # Apply token budgeting: trimmable sections in removal order
         # (least important first: decisions, workspace, plan, progress)
