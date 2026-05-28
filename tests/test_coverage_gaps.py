@@ -585,7 +585,7 @@ class TestRunnerGaps:
             yaml.safe_dump(state_data, f)
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
-        state = runner.main(["--goal", "test", "--max-iterations", "5"])
+        state = runner.main(["--goal", "test", "--max-iterations", "5", "--complexity", "high"])
         assert state["status"] == "error"
         assert len(state["errors"]) > 0
         assert "nonexistent_node" in state["errors"][0]
@@ -606,7 +606,7 @@ class TestRunnerGaps:
     def test_runner_no_transitions_completes(self, runner_env: Path, monkeypatch) -> None:
         """Test runner completes when reaching a node with no transitions (lines 132-136)."""
         monkeypatch.setattr(runner, "KERNEL_ROOT", runner_env)
-        state = runner.main(["--goal", "test", "--max-iterations", "10"])
+        state = runner.main(["--goal", "test", "--max-iterations", "10", "--complexity", "high"])
         # After init -> terminal (which has no transitions), it should complete
         assert state["status"] == "complete"
 
@@ -672,6 +672,6 @@ class TestRunnerGaps:
                 yaml.safe_dump({"items": []}, f)
 
         monkeypatch.setattr(runner, "KERNEL_ROOT", tmp_path)
-        state = runner.main(["--goal", "test loop", "--max-iterations", "3"])
+        state = runner.main(["--goal", "test loop", "--max-iterations", "3", "--complexity", "high"])
         assert state["iteration_count"] == 3
         assert state["status"] == "complete"

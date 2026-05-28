@@ -23,6 +23,9 @@ class ContextAssembler:
         """
         self.kernel_root = kernel_root
         self.max_skill_content_chars = max_skill_content_chars
+        self._last_node_id: str | None = None
+        self._last_iteration_count: int = 0
+        self._last_successful: bool = False
 
     def _should_include(self, section_key: str, node_id: str | None,
                         tier_rules: dict) -> bool:
@@ -221,6 +224,75 @@ class ContextAssembler:
         self._estimate_total_context_size(all_sections)
 
         return full_text
+
+    def assemble_incremental(self, state: dict, node: dict, graph_executor: Any,
+                             knowledge_store: Any) -> str:
+        """Assemble a reduced incremental context for repeated same-node execution.
+
+        Used when the same node is executing consecutively after a successful
+        iteration. Only includes: output_format, node prompt, state summary,
+        and a delta section.
+
+        Args:
+            state: Current state dict.
+            node: Current node dict.
+            graph_executor: GraphExecutor instance.
+            knowledge_store: KnowledgeStore instance.
+
+        Returns:
+            A reduced context string, or empty string if incremental is not applicable.
+        """
+        node_id = node.get("id")
+
+        # Only use incremental if same node as last time and last was successful
+        if node_id != self._last_node_id or not self._last_successful:
+            # Reset and signal caller to use full context
+            self._last_node_id = node_id
+            self._last_successful = False
+            return ""
+
+        sections = []
+
+        # Always include state summary
+        state_summary = self._format_state(state)
+        sections.append(
+            "=== INCREMENTAL UPDATE ===\n\n"
+            "This is a continuation on the same node. "
+            "Only changed context is shown below."
+        )
+        sections.append(f"=== CURRENT STATE ===\n\n{state_summary}")
+
+        # Always include current task
+        current_task = self._load_current_task()
+        if current_task:
+            sections.append(f"=== CURRENT TASK ===\n\n{current_task}")
+
+        # Always include node prompt
+        prompt_file = graph_executor.get_prompt_for_node(node_id)
+        if prompt_file:
+            prompt_path = self.kernel_root / "kernel" / prompt_file
+            prompt_content = self._read_file(prompt_path)
+        else:
+            prompt_content = "(no prompt file configured for this node)"
+        sections.append(f"=== NODE PROMPT ({node_id}) ===\n\n{prompt_content}")
+
+        # Always include output format
+        contract_path = self.kernel_root / "kernel" / "contracts" / "output_format.md"
+        contract_content = self._read_file(contract_path)
+        if not contract_content.startswith("(file not found"):
+            sections.append(f"=== OUTPUT FORMAT CONTRACT ===\n\n{contract_content}")
+
+        return "\n\n".join(sections)
+
+    def mark_iteration_success(self, node_id: str) -> None:
+        """Mark that the last iteration on this node was successful.
+
+        Args:
+            node_id: The node ID that succeeded.
+        """
+        self._last_node_id = node_id
+        self._last_successful = True
+        self._last_iteration_count += 1
 
     def _load_progress(self) -> str:
         """Load progress information from memory/progress.yaml.

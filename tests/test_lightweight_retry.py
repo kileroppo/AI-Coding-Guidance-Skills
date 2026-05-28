@@ -154,6 +154,7 @@ class TestLightweightRetry:
                 "--goal", "test lightweight",
                 "--ai-command", "echo hello",
                 "--max-iterations", "2",
+                "--complexity", "high",
             ])
 
         # Should have 2 calls
@@ -210,6 +211,7 @@ class TestLightweightRetry:
                 "--goal", "test retry",
                 "--ai-command", "echo hi",
                 "--max-iterations", "2",
+                "--complexity", "high",
             ])
 
         assert call_count[0] == 2
@@ -267,6 +269,7 @@ class TestLightweightRetry:
                 "--goal", "test fallback",
                 "--ai-command", "echo hi",
                 "--max-iterations", "3",
+                "--complexity", "high",
             ])
 
         assert call_count[0] == 3
@@ -329,6 +332,7 @@ class TestLightweightRetry:
                 "--ai-command", "echo hi",
                 "--max-iterations", "2",
                 "--resume",
+                "--complexity", "high",
             ])
 
         # Lightweight prompt for plan node should show plan_ready, plan_needs_revision

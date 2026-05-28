@@ -40,6 +40,7 @@ from typing import Any
 import yaml
 
 from kernel.bootstrap import BootstrapGenerator
+from kernel.complexity_assessor import assess_complexity
 from kernel.context_assembler import ContextAssembler
 from kernel.contracts import OutputContractValidator
 from kernel.error_messages import format_error
@@ -157,6 +158,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["kernel", "ralph"],
         default="kernel",
         help="Execution mode: kernel (default) or ralph (exports prd.json after planning)",
+    )
+    parser.add_argument(
+        "--complexity",
+        type=str,
+        choices=["auto", "low", "medium", "high"],
+        default="auto",
+        help="Task complexity level for routing (default: auto-detect from goal)",
     )
     return parser.parse_args(argv)
 
@@ -342,6 +350,32 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     # Set execution mode
     state_mgr.set_execution_mode(args.execution_mode)
 
+    # Complexity assessment and routing
+    if args.complexity == "auto":
+        complexity = assess_complexity(state_mgr.state.get("goal", ""))
+    else:
+        complexity = args.complexity
+    state_mgr.state["complexity"] = complexity
+
+    # Low complexity: skip init/plan, jump straight to code
+    if complexity == "low" and not args.dry_run and not args.generate_prompt:
+        tasks_file = Path(memory_dir) / "tasks.yaml"
+        if not tasks_file.exists() or not yaml.safe_load(
+            tasks_file.read_text(encoding="utf-8")
+        ):
+            task_data = {
+                "tasks": [{
+                    "id": "T-001",
+                    "title": state_mgr.state.get("goal", ""),
+                    "status": "pending",
+                    "description": state_mgr.state.get("goal", ""),
+                    "complexity": "low",
+                }]
+            }
+            with open(tasks_file, "w", encoding="utf-8") as f:
+                yaml.safe_dump(task_data, f)
+        state_mgr.state["current_node"] = "code"
+
     # Handle --generate-prompt: assemble and print context, then exit
     if args.generate_prompt:
         gen = BootstrapGenerator(KERNEL_ROOT)
@@ -521,7 +555,13 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                 retry_lightweight = False
                 _last_was_lightweight = True
             else:
-                context_prompt = assembler.assemble(state, node, graph, knowledge)
+                # Try incremental context for same-node repeats
+                context_prompt = assembler.assemble_incremental(
+                    state, node, graph, knowledge
+                )
+                if not context_prompt:
+                    # Full context needed
+                    context_prompt = assembler.assemble(state, node, graph, knowledge)
                 _last_was_lightweight = False
             try:
                 proc = subprocess.Popen(
@@ -688,6 +728,13 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     )
                 state_mgr.set_current_node(next_node_id)
 
+                # Medium complexity: skip reflect/evolve
+                if complexity == "medium" and next_node_id in ("reflect", "evolve"):
+                    state_mgr.set_current_node("plan")
+
+                # Mark iteration success for incremental context
+                assembler.mark_iteration_success(node["id"])
+
                 # Verbose: report successful iteration
                 if args.verbose:
                     reporter = Reporter()
@@ -780,6 +827,10 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             if transitions:
                 next_node_id = transitions[0]["to"]
                 state_mgr.set_current_node(next_node_id)
+
+                # Medium complexity: skip reflect/evolve in scaffolding mode
+                if complexity == "medium" and next_node_id in ("reflect", "evolve"):
+                    state_mgr.set_current_node("plan")
 
                 if args.dry_run:
                     print(f"  Next node: {next_node_id}")

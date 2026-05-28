@@ -485,6 +485,7 @@ class TestRunnerContractIntegration:
                 "--goal", "test contract valid",
                 "--ai-command", "echo hello",
                 "--max-iterations", "1",
+                "--complexity", "high",
             ])
 
         assert state["current_node"] == "plan"
@@ -531,6 +532,7 @@ class TestRunnerContractIntegration:
                 "--goal", "test bad transition",
                 "--ai-command", "echo hi",
                 "--max-iterations", "2",
+                "--complexity", "high",
             ])
 
         assert state["current_node"] == "init"

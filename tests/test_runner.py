@@ -334,6 +334,7 @@ class TestMode3:
                 "--goal", "test mode3",
                 "--ai-command", "echo hello",
                 "--max-iterations", "1",
+                "--complexity", "high",
             ])
 
         mock_popen.assert_called_once()
@@ -358,6 +359,7 @@ class TestMode3:
                 "--goal", "test fallback",
                 "--ai-command", "echo hi",
                 "--max-iterations", "1",
+                "--complexity", "high",
             ])
 
         # Contract validation fails (missing TRANSITION), stays on same node
@@ -381,6 +383,7 @@ class TestMode3:
                 "--goal", "test unmatched",
                 "--ai-command", "echo hi",
                 "--max-iterations", "1",
+                "--complexity", "high",
             ])
 
         # Contract validation fails (invalid transition for init), stays on same node
@@ -411,6 +414,7 @@ class TestMode3:
                 "--ai-command", "echo hi",
                 "--timeout", "5",
                 "--max-iterations", "2",
+                "--complexity", "high",
             ])
 
         # Should stay on same node and record error
@@ -493,6 +497,7 @@ class TestMode3:
                 "--goal", "context test",
                 "--ai-command", "claude --print",
                 "--max-iterations", "1",
+                "--complexity", "high",
             ])
 
         assert len(captured_input) == 1
@@ -1136,6 +1141,7 @@ class TestReviewFixes:
                 "--goal", "test returncode",
                 "--ai-command", "claude --print",
                 "--max-iterations", "2",
+                "--complexity", "high",
             ])
 
         captured = capsys.readouterr()

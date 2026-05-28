@@ -409,6 +409,7 @@ class TestFullCycleHelloWorld:
             "--goal", "Test node traversal",
             "--ai-command", "mock-ai",
             "--max-iterations", "10",
+            "--complexity", "high",
         ])
 
         # Verify we visited expected nodes in order for one full cycle

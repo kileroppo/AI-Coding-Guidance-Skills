@@ -105,6 +105,7 @@ class TestTrackVisitBeforeExecution:
                 "--goal", "test tracking",
                 "--ai-command", "echo hi",
                 "--max-iterations", "3",
+                "--complexity", "high",
             ])
 
         # Node "init" should have been visited 3 times despite all failures
@@ -283,6 +284,7 @@ class TestRetryStrategies:
                 "--ai-command", "echo hi",
                 "--max-iterations", "2",
                 "--retry-strategy", "continue",
+                "--complexity", "high",
             ])
 
         # Should stay on init
@@ -303,6 +305,7 @@ class TestRetryStrategies:
                 "--ai-command", "echo hi",
                 "--max-iterations", "1",
                 "--retry-strategy", "skip",
+                "--complexity", "high",
             ])
 
         # Should advance to "plan" (first available transition from init)
@@ -368,6 +371,7 @@ class TestRetryStrategies:
                     "--ai-command", "echo hi",
                     "--max-iterations", "8",
                     "--retry-strategy", "backoff",
+                    "--complexity", "high",
                 ])
 
         # Visit 7: 2^(7-1)=64 -> capped to 60

@@ -495,6 +495,7 @@ class TestRunnerCallsFeedbackLoop:
                 "--goal", "test feedback",
                 "--ai-command", "echo hello",
                 "--max-iterations", "1",
+                "--complexity", "high",
             ])
 
         # Verify feedback loop ran by checking reflections.jsonl

@@ -451,6 +451,7 @@ class TestTimeoutHandling:
                 "--goal", "test",
                 "--ai-command", "echo test",
                 "--max-iterations", "2",
+                "--complexity", "high",
             ])
 
         # Check that timeout errors contain context
@@ -529,6 +530,7 @@ class TestTimeoutHandling:
                 "--goal", "test",
                 "--ai-command", "echo test",
                 "--max-iterations", "2",
+                "--complexity", "high",
             ])
 
         errors = result.get("errors", [])
