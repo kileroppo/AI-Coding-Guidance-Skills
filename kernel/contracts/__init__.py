@@ -109,12 +109,18 @@ class OutputContractValidator:
         # Remove inline bold/backtick markers around keywords (e.g. KEYWORD:** val -> KEYWORD: val)
         result = re.sub(r"\*{1,2}(?=\s*:)", "", result)
         result = re.sub(r":\s*\*{1,2}\s*", ": ", result)
+        # Remove backticks adjacent to the colon (e.g. KEYWORD`: value -> KEYWORD: value)
+        result = re.sub(r"`(?=\s*:)", "", result)
+        result = re.sub(r":\s*`\s*", ": ", result)
         # Final strip
         result = result.strip()
         return result
 
     def _extract_from_code_blocks(self, output: str, keyword: str) -> str | None:
         """Search inside ``` code blocks for lines matching the keyword pattern.
+
+        Inside code blocks, content is literal text so no markdown stripping
+        is needed. Uses a simple regex anchored to start of line.
 
         Args:
             output: The full AI output string.
@@ -124,7 +130,7 @@ class OutputContractValidator:
             The value after the keyword and colon, or None if not found.
         """
         pattern = re.compile(
-            r"^[\s>*`\-]*\*{0,2}`?" + keyword + r"`?\*{0,2}\s*:\s*(.+)",
+            r"^" + keyword + r"\s*:\s*(.+)",
             re.IGNORECASE,
         )
         in_code_block = False
@@ -134,7 +140,7 @@ class OutputContractValidator:
                 in_code_block = not in_code_block
                 continue
             if in_code_block:
-                match = pattern.match(self._strip_markdown(stripped))
+                match = pattern.match(stripped)
                 if match:
                     return match.group(1).strip()
         return None
@@ -223,8 +229,9 @@ class OutputContractValidator:
     def _parse_transition(self, output: str) -> str | None:
         """Parse the TRANSITION line from output.
 
-        Uses regex matching with markdown stripping, code block extraction,
-        and semantic inference as fallback.
+        Uses _strip_markdown first, then a strict anchored regex on the
+        cleaned text to avoid false positives. Falls back to code block
+        extraction and semantic inference.
 
         Args:
             output: The raw AI output.
@@ -233,7 +240,7 @@ class OutputContractValidator:
             The transition condition string, or None if not found.
         """
         pattern = re.compile(
-            r"^[\s>*`\-]*\*{0,2}`?TRANSITION`?\*{0,2}\s*:\s*(.+)",
+            r"^TRANSITION\s*:\s*(.+)",
             re.IGNORECASE,
         )
         for line in output.splitlines():
@@ -253,7 +260,9 @@ class OutputContractValidator:
     def _parse_status(self, output: str) -> str:
         """Parse the STATUS line from output.
 
-        Uses regex matching with markdown stripping and code block extraction.
+        Uses _strip_markdown first, then a strict anchored regex on the
+        cleaned text to avoid false positives. Falls back to code block
+        extraction.
 
         Args:
             output: The raw AI output.
@@ -262,7 +271,7 @@ class OutputContractValidator:
             The status string, or empty string if not found.
         """
         pattern = re.compile(
-            r"^[\s>*`\-]*\*{0,2}`?STATUS`?\*{0,2}\s*:\s*(.+)",
+            r"^STATUS\s*:\s*(.+)",
             re.IGNORECASE,
         )
         for line in output.splitlines():
@@ -281,7 +290,9 @@ class OutputContractValidator:
     def _parse_files_written(self, output: str) -> list[str]:
         """Parse FILES_WRITTEN lines from output.
 
-        Uses regex matching with markdown stripping and code block extraction.
+        Uses _strip_markdown first, then a strict anchored regex on the
+        cleaned text to avoid false positives. Falls back to code block
+        extraction.
 
         Args:
             output: The raw AI output.
@@ -290,7 +301,7 @@ class OutputContractValidator:
             List of file paths found.
         """
         pattern = re.compile(
-            r"^[\s>*`\-]*\*{0,2}`?FILES_WRITTEN`?\*{0,2}\s*:\s*(.*)",
+            r"^FILES_WRITTEN\s*:\s*(.*)",
             re.IGNORECASE,
         )
         files: list[str] = []
@@ -317,7 +328,9 @@ class OutputContractValidator:
     def _parse_errors(self, output: str) -> list[str]:
         """Parse ERROR lines from output.
 
-        Uses regex matching with markdown stripping and code block extraction.
+        Uses _strip_markdown first, then a strict anchored regex on the
+        cleaned text to avoid false positives. Falls back to code block
+        extraction.
 
         Args:
             output: The raw AI output.
@@ -326,7 +339,7 @@ class OutputContractValidator:
             List of error messages found.
         """
         pattern = re.compile(
-            r"^[\s>*`\-]*\*{0,2}`?ERROR`?\*{0,2}\s*:\s*(.*)",
+            r"^ERROR\s*:\s*(.*)",
             re.IGNORECASE,
         )
         errors: list[str] = []

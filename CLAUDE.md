@@ -54,7 +54,9 @@ The `.claude/settings.json` file defines which operations Claude Code can perfor
 - **Write(knowledge/**)**: Writing to the knowledge base
 - **Bash(python3.12 -m pytest*)**: Running tests
 - **Bash(python3.12 runner.py*)**: Running the kernel
-- **Bash(ls*, cat*, mkdir*)**: Basic file system inspection
+- **Bash(ls)**, **Bash(ls *)**: Directory listing (current directory only)
+- **Bash(mkdir*)**: Creating directories
+- **Bash(cat kernel/*)**, **Bash(cat tests/*)**, etc.: Reading project files (scoped to project directories and known extensions: .md, .py, .yaml, .json, .toml)
 
 ### Denied Operations
 

@@ -366,3 +366,31 @@ class TestCombinedMarkdownFormats:
         assert result.transition == "goal_loaded"
         assert result.status == "success"
         assert result.files_written == ["src/main.py"]
+
+
+class TestFalsePositiveRejection:
+    """Tests that prose containing keywords does NOT produce false matches."""
+
+    def test_error_in_prose_not_matched(self, validator: OutputContractValidator) -> None:
+        """A line like 'An error: the file was not found' should NOT produce an ERROR entry."""
+        output = "TRANSITION: code_needs_retry\nSTATUS: failure\nAn error: the file was not found"
+        result = validator.validate_output(output, "code")
+        assert result.errors == []
+
+    def test_syntax_error_in_prose_not_matched(self, validator: OutputContractValidator) -> None:
+        """A line like 'Syntax error: unexpected token' should NOT produce an ERROR entry."""
+        output = "TRANSITION: code_needs_retry\nSTATUS: failure\nSyntax error: unexpected token"
+        result = validator.validate_output(output, "code")
+        assert result.errors == []
+
+    def test_current_status_in_prose_not_matched(self, validator: OutputContractValidator) -> None:
+        """A line like 'Current status: processing' should NOT match as STATUS."""
+        output = "TRANSITION: plan_ready\nSTATUS: success\nCurrent status: processing"
+        result = validator.validate_output(output, "plan")
+        assert result.status == "success"
+
+    def test_transition_in_prose_not_matched(self, validator: OutputContractValidator) -> None:
+        """A line like 'Check the transition: it should work' should NOT match as TRANSITION."""
+        output = "Check the transition: it should work\nTRANSITION: plan_ready\nSTATUS: success"
+        result = validator.validate_output(output, "plan")
+        assert result.transition == "plan_ready"

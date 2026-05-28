@@ -10,9 +10,20 @@
       "Write(knowledge/**)",
       "Bash(python3.12 -m pytest*)",
       "Bash(python3.12 runner.py*)",
-      "Bash(ls*)",
-      "Bash(cat*)",
-      "Bash(mkdir*)"
+      "Bash(ls)",
+      "Bash(ls *)",
+      "Bash(mkdir*)",
+      "Bash(cat kernel/*)",
+      "Bash(cat tests/*)",
+      "Bash(cat skills/*)",
+      "Bash(cat memory/*)",
+      "Bash(cat knowledge/*)",
+      "Bash(cat docs/*)",
+      "Bash(cat *.md)",
+      "Bash(cat *.py)",
+      "Bash(cat *.yaml)",
+      "Bash(cat *.json)",
+      "Bash(cat *.toml)"
     ],
     "deny": [
       "Write(kernel/constitution.md)",
