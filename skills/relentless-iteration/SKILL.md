@@ -7,11 +7,11 @@ description: "Multi-round critical iteration combining code hardening AND real-u
 
 ## What This Skill Does
 
-Runs repeated rounds of critical analysis on your code and UI. Each round, the AI adopts a different user persona, walks your system, finds real problems, implements fixes, and verifies with tests. Repeats until the system is robust.
+Runs repeated rounds of critical analysis on your code and UI. Each round, the AI adopts a different user persona, executes your system's flows, finds real problems, implements fixes, and verifies with tests. Repeats until the system meets all stopping criteria.
 
-**Who this is for:** AI creators who want stress-testing from multiple real-world perspectives.
+**Who this is for:** AI creators who want automated stress-testing from multiple real-world perspectives.
 
-**How to use it:** Type `/iterate`. The AI begins multi-round improvement automatically.
+**How to use it:** Type `/iterate`. The AI begins multi-round improvement immediately with no further input needed.
 
 **Why this approach:** Ad-hoc prompting ("review my code") produces shallow single-perspective feedback. Structured iteration catches 3-5x more issues through forced perspective rotation, minimum round enforcement, and mandatory verification. Without structure, teams find the same surface issues while deep problems ship to production.
 
@@ -69,45 +69,59 @@ Runs repeated rounds of critical analysis on your code and UI. Each round, the A
 
 ### Step 1: Establish Baseline (once before Round 1)
 
-1. Run full test suite. Record: total tests, passes, fails, coverage %.
-2. Read entry points: config, app entry, routes, primary modules.
-3. List claimed capabilities from README/docs.
-4. Map user flows: every action from first visit to task completion.
+1. Run full test suite. Record in output: total tests, passes, fails, coverage %.
+2. If no test runner exists: note "No test runner found" and skip coverage tracking. Use manual verification (run app, confirm no errors) as the regression check.
+3. If tests fail on first run: fix failing tests as Round 0, commit `fix(tests): baseline repair`, then proceed.
+4. Read entry points: config files, app entry, route definitions, primary modules.
+5. List claimed capabilities from README/docs as a numbered checklist.
+6. Map user flows: produce a numbered list of every action sequence from first visit to task completion.
 
-If tests fail to run: fix as Round 0, then proceed.
+**Scope definitions:**
+
+| Scope | Files included |
+|-------|---------------|
+| `full-stack` | All source files: frontend, backend, config, tests |
+| `ui` | Components, pages, layouts, styles, templates (*.tsx, *.vue, *.html, *.css) |
+| `frontend` | Same as `ui` plus client-side logic, state management, API calls |
+| `backend` | Server code, APIs, database, middleware, jobs (skip all UI checks) |
+| `infra` | Dockerfiles, CI configs, deploy scripts, env files |
 
 ### Step 2: Execute Rounds (repeat 1 through N)
 
 #### 2a. Select Persona
 
-Rotate sequentially. After 12, restart from 1.
+Rotate sequentially through the table below. After Persona 12, restart from Persona 1 (Round 13 uses Persona 1 again, Round 14 uses Persona 2, etc.).
 
-| # | Persona | What they test |
-|---|---------|---------------|
-| 1 | First-time user | Zero-knowledge product use |
-| 2 | Busy commuter (phone) | One thumb, 375px, under 5 taps |
-| 3 | Heavy data user | Search, batch ops, 100+ items |
-| 4 | Elder (65+) | Large fonts, high contrast, simple flows |
-| 5 | Non-native speaker | Mixed-language input, clear terms |
-| 6 | Screen reader user | Keyboard-only, ARIA, semantic HTML |
-| 7 | Impatient (2s span) | Abandon without instant feedback |
-| 8 | Perfectionist designer | Pixel alignment, 8px grid, consistency |
-| 9 | Minimalist | Remove anything not breaking core function |
-| 10 | Competitor's user | Feature parity, unique advantages |
-| 11 | Malicious user | XSS, injection, oversized input, rapid-fire |
-| 12 | DevOps (3 AM incident) | Kill services, corrupt data, partitions |
+| # | Persona | Primary task to attempt |
+|---|---------|------------------------|
+| 1 | First-time user | Complete onboarding with zero prior knowledge |
+| 2 | Busy commuter (phone) | Finish core task one-handed, 375px, under 5 taps |
+| 3 | Heavy data user | Search, filter, batch operate on 100+ items |
+| 4 | Elder (65+) | Complete task with large fonts, high contrast, simple flows |
+| 5 | Non-native speaker | Navigate with mixed-language input, no jargon |
+| 6 | Screen reader user | Complete task keyboard-only with ARIA (Accessible Rich Internet Applications) labels |
+| 7 | Impatient (2s attention) | Get result or abandon if no instant feedback |
+| 8 | Perfectionist designer | Verify pixel alignment, 8px grid, visual consistency |
+| 9 | Minimalist | Remove anything not required for core function |
+| 10 | Competitor's user | Compare feature parity, find unique advantages |
+| 11 | Malicious user | Attempt XSS, injection, oversized input, rapid-fire requests |
+| 12 | DevOps (3 AM incident) | Kill services, corrupt data, simulate network partitions |
 
-#### 2b. Walk the Full Flow
+#### 2b. Execute the Flow
 
-1. Open entry point. Attempt persona's primary task.
-2. Record every confusion, error, delay, missing feedback, broken flow.
-3. Note file:line for each issue.
+For the selected persona, perform these steps in order:
 
-Persona cannot complete task = automatic HIGH finding.
+1. Open the application entry point.
+2. Attempt the persona's primary task (defined in persona table above).
+3. Produce a numbered list of observations: every confusion, error, delay, missing feedback, or broken flow encountered.
+4. For each observation, record: file path, line number, and what went wrong.
 
-#### 2c. Criticize
+If persona cannot complete their task, mark it as an automatic HIGH finding.
+If persona completes the task with no issues, proceed to Step 2c (the checklist may still reveal problems).
 
-Mark each PASS or FAIL:
+#### 2c. Criticize (Checklist)
+
+Evaluate each item. Produce PASS or FAIL for every row. If FAIL, record the severity shown.
 
 **Engineering:**
 
@@ -119,68 +133,86 @@ Mark each PASS or FAIL:
 | 4 | Malformed input / timeout / null handling? | High |
 | 5 | Hardcoded values / assumed environment? | Medium |
 
-**UX (5 dimensions from /ux-audit):**
+**UX (5 dimensions from /ux-audit):** Skip if scope is `backend` or `infra`.
 
 | # | Dimension | Pass Criteria |
 |---|-----------|--------------|
-| 1 | Happy Path | Primary task in under 3 clicks, no hesitation |
-| 2 | Intuition | Every element understandable without docs |
-| 3 | Fault Tolerance | Rapid clicks, race conditions, offline handled |
-| 4 | State Feedback | Visible feedback within 300ms |
-| 5 | Hierarchy | Most important element visually dominant |
+| 1 | Happy Path | Primary task completes in under 3 clicks with no hesitation |
+| 2 | Intuition | Every element understandable without reading docs |
+| 3 | Fault Tolerance | Rapid clicks, race conditions, offline: all handled gracefully |
+| 4 | State Feedback | Visible feedback appears within 300ms of user action |
+| 5 | Hierarchy | Most important element is visually dominant on screen |
 
 **Measurable standards:**
 
-| Check | Pass |
-|-------|------|
-| Content findable in under 3s | Yes/No |
-| Core task done without instructions | Yes/No |
-| Errors show what/why/next-step | Yes/No |
-| Ops >300ms show progress | Yes/No |
-| Empty states show guidance | Yes/No |
-| Touch targets >= 44x44px | Yes/No |
-| Contrast >= 4.5:1 body, 3:1 large | Yes/No |
-| No overflow at 375px | Yes/No |
-| Zero jargon, verb-first labels | Yes/No |
-| Destructive actions need confirm+undo | Yes/No |
+| Check | How to verify | Pass |
+|-------|---------------|------|
+| Content findable in under 3s | Count navigation steps to reach content | Yes/No |
+| Core task done without instructions | Attempt task using only UI labels | Yes/No |
+| Errors show what/why/next-step | Trigger an error, check message content | Yes/No |
+| Ops >300ms show progress | Find async calls, check for loading states | Yes/No |
+| Empty states show guidance | Check components when data list is empty | Yes/No |
+| Touch targets >= 44x44px | Check CSS width/height or padding on interactive elements | Yes/No |
+| Contrast >= 4.5:1 body, 3:1 large | Check color values against WCAG AA standard | Yes/No |
+| No overflow at 375px | Check CSS for fixed widths > 375px, missing responsive rules | Yes/No |
+| Zero jargon, verb-first labels | Read all button/link text for plain language | Yes/No |
+| Destructive actions need confirm+undo | Find delete/remove actions, check for confirmation dialog | Yes/No |
 
-Output per problem: `[HIGH/MEDIUM/LOW]` + file:line + description + impact.
+Output per problem: `[HIGH/MEDIUM/LOW]` + file:line + description + impact on users.
 
 #### 2d. Propose Fixes
 
-Per problem: what is wrong (1 sentence), why it matters (1 sentence), exact fix (implementable).
+For each problem found, produce:
+1. What is wrong (1 sentence).
+2. Why it matters to users (1 sentence).
+3. Exact fix: specific code change, implementable without further research.
+
+If no problems found in both 2b and 2c: select the most adversarial persona from the table (Persona 11: Malicious user) and re-run Step 2b with that persona. If still zero findings, record "Clean round" and proceed.
 
 #### 2e. Implement & Verify
 
-- Modify code, add/update tests, run full suite
-- Zero regressions: test count >= baseline, no new failures
-- Re-check fixes for introduced problems
-- Commit: `fix(scope): description (Round N)`
+1. Modify code to apply each fix.
+2. Add or update tests for each change.
+3. Run full test suite.
+4. Confirm: test count >= baseline, no new failures, no regressions.
+5. Re-check each fix: does the fix introduce any new problem? If yes, fix that too.
+6. Commit: `fix(scope): description (Round N)`
 
-Do NOT proceed if verification fails. Fix first.
+Do NOT proceed to next round if verification fails. Fix first.
 
-### Step 3: Escalation
+**Guardrails:**
+- Only fix problems that have a clear negative user impact. Do not optimize preemptively.
+- If the same file is modified 3+ times in one round, stop and reassess whether the approach is correct before continuing.
+- When two personas give conflicting recommendations (e.g., Persona 7 wants speed, Persona 4 wants simplicity), prefer the fix that serves the broadest user base.
+- If a fix introduces a new problem that itself requires a fix, and that second fix also introduces a problem, stop the chain. Revert to the pre-fix state and choose a different approach.
 
-| Rounds | Focus |
-|--------|-------|
-| 1-2 | Surface: error handling, broken links, obvious gaps |
-| 3-4 | Structural: architecture, dead code, missing tests |
-| 5-6 | Usability: first-run, docs, accessibility |
-| 7-8 | Operational: concurrency, performance, degradation |
-| 9-10 | Edge cases: adversarial input, integration, polish |
-| 11+ | Apply stopping criteria |
+### Step 3: Escalation (Focus Progression)
+
+Each round range shifts focus to deeper concerns. Earlier rounds fix surface issues; later rounds dig into structural and adversarial problems.
+
+| Rounds | Focus area | Example findings |
+|--------|------------|------------------|
+| 1-2 | Surface: error handling, broken links, obvious gaps | Missing 404 page, unhandled null |
+| 3-4 | Structural: architecture, dead code, missing tests | Unused imports, untested branch |
+| 5-6 | Usability: first-run experience, docs, accessibility | No onboarding, missing alt text |
+| 7-8 | Operational: concurrency, performance, degradation | Race condition, no timeout |
+| 9-10 | Edge cases: adversarial input, integration, polish | XSS vector, inconsistent spacing |
+| 11+ | Apply stopping criteria (see Step 4) | If criteria unmet, continue |
 
 ### Step 4: Stopping Criteria
 
-Stop when ALL true simultaneously:
-1. Minimum rounds completed
-2. Coverage >= target (default 90%)
-3. Latest round: zero HIGH/MEDIUM issues
-4. New user completes primary task from docs alone
-5. Every claimed feature implemented and tested
-6. Two consecutive rounds: zero substantial findings
+Stop when ALL of the following are true simultaneously:
+1. Minimum requested rounds completed.
+2. Coverage >= target (default 90% for apps with existing tests; skip if no test runner).
+3. Latest round produced zero HIGH or MEDIUM issues.
+4. A simulated new user can complete the primary task from docs alone.
+5. Every feature claimed in README/docs is implemented and tested.
+6. Two consecutive rounds produced zero substantial findings (confirms genuine completion, not oversight).
 
-If ANY false: continue. If rounds > 2x requested: stop, report remaining as "deferred."
+If ANY condition is false: continue to next round.
+If total rounds executed > 2x originally requested: stop and report remaining issues as "deferred" in the final summary.
+
+**Coverage target context:** 90% is the default for web applications and APIs with testable logic. Reduce to 70% for: infrastructure code, generated code, or legacy projects with no existing tests. State the chosen target and rationale in Round 1 output.
 
 ---
 
@@ -274,15 +306,17 @@ Each principle connects to a concrete rule:
 
 ## Anti-Patterns
 
-| Don't | Do Instead |
+| Don't | Do instead |
 |-------|-----------|
 | Add code without finding a problem | Problem first, then fix |
-| Fix cosmetic while structural remains | HIGH > MEDIUM > LOW |
+| Fix cosmetic issues while structural remain | HIGH before MEDIUM before LOW |
 | Test the framework, not the system | Test real user actions |
 | Stop early ("looks fine") | Complete minimum rounds |
 | Sugarcoat ("could be improved") | "Broken because X. Fix: Y." |
-| Add features as fixes | Log features separately |
+| Add features disguised as fixes | Log feature requests separately |
 | Analyze without changing code | Every round commits changes |
+| Optimize code that works fine | Only fix clear negative user impact |
+| Rewrite a file repeatedly in one round | 3+ edits to same file = reassess approach |
 
 ---
 
