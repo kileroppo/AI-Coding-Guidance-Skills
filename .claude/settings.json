@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write(workspace/**)",
+      "Write(memory/**)",
+      "Write(memory/*.yaml)",
+      "Write(memory/*.md)",
+      "Write(memory/*.jsonl)",
+      "Write(knowledge/**)",
+      "Bash(python3.12 -m pytest*)",
+      "Bash(python3.12 runner.py*)",
+      "Bash(ls*)",
+      "Bash(cat*)",
+      "Bash(mkdir*)"
+    ],
+    "deny": [
+      "Write(kernel/constitution.md)",
+      "Write(kernel/BOOT.md)",
+      "Write(runner.py)",
+      "Bash(rm -rf*)",
+      "Bash(git push*)",
+      "Bash(curl*)",
+      "Bash(wget*)"
+    ]
+  }
+}

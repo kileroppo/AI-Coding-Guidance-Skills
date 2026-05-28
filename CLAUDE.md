@@ -41,3 +41,32 @@ FILES_WRITTEN: path/to/file1.py, path/to/file2.py
 3. These lines must appear at the END of your response, as raw text
 4. Do not wrap them in markdown code fences
 5. Do not omit them under any circumstance
+
+## Permission Auto-Review
+
+The `.claude/settings.json` file defines which operations Claude Code can perform automatically without manual approval.
+
+### Allowed Operations
+
+- **Read**: Reading any file in the workspace
+- **Write(workspace/**)**: Writing files in the workspace directory
+- **Write(memory/**)**: Writing to memory storage (yaml, md, jsonl)
+- **Write(knowledge/**)**: Writing to the knowledge base
+- **Bash(python3.12 -m pytest*)**: Running tests
+- **Bash(python3.12 runner.py*)**: Running the kernel
+- **Bash(ls*, cat*, mkdir*)**: Basic file system inspection
+
+### Denied Operations
+
+- **Write(kernel/constitution.md)**: Cannot modify the kernel constitution
+- **Write(kernel/BOOT.md)**: Cannot modify the boot protocol
+- **Write(runner.py)**: Cannot modify the runner entry point
+- **Bash(rm -rf*)**: Cannot perform destructive deletions
+- **Bash(git push*)**: Cannot push to remote repositories
+- **Bash(curl*, wget*)**: Cannot make network requests
+
+### How It Works
+
+If Claude requests a command not in the allow list, it will be blocked and require manual approval. This protects core kernel files and prevents dangerous operations while allowing productive development work.
+
+To modify these permissions, edit `.claude/settings.json`.
