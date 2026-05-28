@@ -5,6 +5,8 @@ AI output against the formal output format specification defined in
 kernel/contracts/output_format.md.
 """
 
+import re
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -71,6 +73,104 @@ class OutputContractValidator:
                     conditions.append(condition)
             self._valid_transitions[node_id] = conditions
 
+    def _strip_markdown(self, line: str) -> str:
+        """Remove markdown formatting from a line.
+
+        Strips leading `> `, `- `, `* `, `**`, backticks, trailing `**`,
+        and any leading/trailing whitespace.
+
+        Args:
+            line: The raw line text.
+
+        Returns:
+            The line with markdown formatting removed.
+        """
+        result = line.strip()
+        # Strip leading blockquote marker
+        if result.startswith("> "):
+            result = result[2:]
+        elif result.startswith(">"):
+            result = result[1:]
+        # Strip leading list markers
+        if result.startswith("- "):
+            result = result[2:]
+        elif result.startswith("* "):
+            result = result[2:]
+        # Strip leading bold markers
+        if result.startswith("**"):
+            result = result[2:]
+        # Strip leading backticks
+        result = result.lstrip("`")
+        # Strip trailing bold markers
+        if result.endswith("**"):
+            result = result[:-2]
+        # Strip trailing backticks
+        result = result.rstrip("`")
+        # Remove inline bold/backtick markers around keywords (e.g. KEYWORD:** val -> KEYWORD: val)
+        result = re.sub(r"\*{1,2}(?=\s*:)", "", result)
+        result = re.sub(r":\s*\*{1,2}\s*", ": ", result)
+        # Final strip
+        result = result.strip()
+        return result
+
+    def _extract_from_code_blocks(self, output: str, keyword: str) -> str | None:
+        """Search inside ``` code blocks for lines matching the keyword pattern.
+
+        Args:
+            output: The full AI output string.
+            keyword: The keyword to search for (e.g., 'TRANSITION').
+
+        Returns:
+            The value after the keyword and colon, or None if not found.
+        """
+        pattern = re.compile(
+            r"^[\s>*`\-]*\*{0,2}`?" + keyword + r"`?\*{0,2}\s*:\s*(.+)",
+            re.IGNORECASE,
+        )
+        in_code_block = False
+        for line in output.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                in_code_block = not in_code_block
+                continue
+            if in_code_block:
+                match = pattern.match(self._strip_markdown(stripped))
+                if match:
+                    return match.group(1).strip()
+        return None
+
+    def _semantic_infer_transition(self, output: str) -> str | None:
+        """Infer transition from natural language phrases in the output.
+
+        Checks the full output text (case-insensitive) for known phrases
+        and maps them to transition values. Emits a WARNING when inference
+        is used.
+
+        Args:
+            output: The full AI output string.
+
+        Returns:
+            The inferred transition string, or None if no match.
+        """
+        phrase_map = [
+            (["all tests pass", "tests passing"], "tests_pass"),
+            (["plan is ready", "plan complete"], "plan_ready"),
+            (["goal loaded", "context initialized"], "goal_loaded"),
+            (["code written", "implementation complete"], "code_written"),
+            (["review pass", "code quality acceptable"], "review_pass"),
+            (["no evolution", "no changes needed"], "no_evolution_needed"),
+        ]
+        output_lower = output.lower()
+        for phrases, transition in phrase_map:
+            for phrase in phrases:
+                if phrase in output_lower:
+                    warnings.warn(
+                        f"TRANSITION inferred from semantic content: '{phrase}' -> '{transition}'",
+                        stacklevel=2,
+                    )
+                    return transition
+        return None
+
     def validate_output(self, output: str, node_id: str) -> ContractResult:
         """Validate AI output against the output format contract.
 
@@ -123,20 +223,37 @@ class OutputContractValidator:
     def _parse_transition(self, output: str) -> str | None:
         """Parse the TRANSITION line from output.
 
+        Uses regex matching with markdown stripping, code block extraction,
+        and semantic inference as fallback.
+
         Args:
             output: The raw AI output.
 
         Returns:
             The transition condition string, or None if not found.
         """
+        pattern = re.compile(
+            r"^[\s>*`\-]*\*{0,2}`?TRANSITION`?\*{0,2}\s*:\s*(.+)",
+            re.IGNORECASE,
+        )
         for line in output.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("TRANSITION:"):
-                return stripped[len("TRANSITION:"):].strip()
-        return None
+            stripped = self._strip_markdown(line)
+            match = pattern.match(stripped)
+            if match:
+                return match.group(1).strip()
+
+        # Try extracting from code blocks
+        result = self._extract_from_code_blocks(output, "TRANSITION")
+        if result is not None:
+            return result
+
+        # Fallback to semantic inference
+        return self._semantic_infer_transition(output)
 
     def _parse_status(self, output: str) -> str:
         """Parse the STATUS line from output.
+
+        Uses regex matching with markdown stripping and code block extraction.
 
         Args:
             output: The raw AI output.
@@ -144,14 +261,27 @@ class OutputContractValidator:
         Returns:
             The status string, or empty string if not found.
         """
+        pattern = re.compile(
+            r"^[\s>*`\-]*\*{0,2}`?STATUS`?\*{0,2}\s*:\s*(.+)",
+            re.IGNORECASE,
+        )
         for line in output.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("STATUS:"):
-                return stripped[len("STATUS:"):].strip()
+            stripped = self._strip_markdown(line)
+            match = pattern.match(stripped)
+            if match:
+                return match.group(1).strip()
+
+        # Try extracting from code blocks
+        result = self._extract_from_code_blocks(output, "STATUS")
+        if result is not None:
+            return result
+
         return ""
 
     def _parse_files_written(self, output: str) -> list[str]:
         """Parse FILES_WRITTEN lines from output.
+
+        Uses regex matching with markdown stripping and code block extraction.
 
         Args:
             output: The raw AI output.
@@ -159,19 +289,35 @@ class OutputContractValidator:
         Returns:
             List of file paths found.
         """
+        pattern = re.compile(
+            r"^[\s>*`\-]*\*{0,2}`?FILES_WRITTEN`?\*{0,2}\s*:\s*(.*)",
+            re.IGNORECASE,
+        )
         files: list[str] = []
         for line in output.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("FILES_WRITTEN:"):
-                raw = stripped[len("FILES_WRITTEN:"):].strip()
+            stripped = self._strip_markdown(line)
+            match = pattern.match(stripped)
+            if match:
+                raw = match.group(1).strip()
                 if raw:
                     files.extend(
                         f.strip() for f in raw.split(",") if f.strip()
                     )
+
+        if not files:
+            # Try extracting from code blocks
+            result = self._extract_from_code_blocks(output, "FILES_WRITTEN")
+            if result is not None:
+                files.extend(
+                    f.strip() for f in result.split(",") if f.strip()
+                )
+
         return files
 
     def _parse_errors(self, output: str) -> list[str]:
         """Parse ERROR lines from output.
+
+        Uses regex matching with markdown stripping and code block extraction.
 
         Args:
             output: The raw AI output.
@@ -179,11 +325,25 @@ class OutputContractValidator:
         Returns:
             List of error messages found.
         """
+        pattern = re.compile(
+            r"^[\s>*`\-]*\*{0,2}`?ERROR`?\*{0,2}\s*:\s*(.*)",
+            re.IGNORECASE,
+        )
         errors: list[str] = []
         for line in output.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("ERROR:"):
-                msg = stripped[len("ERROR:"):].strip()
+            stripped = self._strip_markdown(line)
+            match = pattern.match(stripped)
+            if match:
+                msg = match.group(1).strip()
                 if msg:
                     errors.append(msg)
+
+        if not errors:
+            # Try extracting from code blocks
+            result = self._extract_from_code_blocks(output, "ERROR")
+            if result is not None:
+                msg = result.strip()
+                if msg:
+                    errors.append(msg)
+
         return errors
