@@ -16,6 +16,7 @@ workflow:
     - diagnose
     - improve-codebase-architecture
     - relentless-iteration
+    - ux-audit
   design_phase:
     - ui-ux-pro-max
     - ui-styling
@@ -164,8 +165,13 @@ items:
     description: "XiaoHongShu content collection with scheduling"
     tags: [scraping, social, collection]
     composable_with: [web-scraper]
+  - name: ux-audit
+    path: ux-audit
+    description: "UX audit from real user perspectives - simulates 6 user types across 5 dimensions to find usability problems"
+    tags: [quality, ux, audit, usability, accessibility]
+    composable_with: [relentless-iteration, ui-ux-pro-max, diagnose]
   - name: relentless-iteration
     path: relentless-iteration
-    description: "Continuous fault-finding and fixing in cycles until production-quality"
-    tags: [quality, iteration, hardening, testing]
-    composable_with: [tdd, diagnose, improve-codebase-architecture]
+    description: "Multi-round critical iteration combining code hardening AND real-user UX stress-testing until production-quality and delightful"
+    tags: [quality, iteration, hardening, testing, ux, usability]
+    composable_with: [tdd, diagnose, improve-codebase-architecture, ux-audit, ui-ux-pro-max]
