@@ -13,13 +13,13 @@ Performs a structured usability review by simulating real user behavior across 5
 
 **How to use it:** Type `/ux-audit [path]`. The AI audits the specified files and outputs a severity-ranked report. This skill reports problems only; use `/iterate` to fix them.
 
-**Why structured audit:** A single "check my UX" prompt produces shallow feedback. Structured auditing forces examination across 5 dimensions with pass/fail criteria, preventing blind spots (accessibility, edge cases, state feedback) that unstructured reviews miss.
+**Why structured audit:** A single "check my UX" prompt produces shallow feedback biased toward what the reviewer happens to notice. Structured auditing forces examination across 5 orthogonal dimensions with pass/fail criteria, eliminating blind spots (accessibility, edge cases, state feedback) that unstructured reviews consistently miss.
 
 ---
 
 ## When NOT to Use This
 
-- **No UI exists:** Use for backend-only services or CLI tools without a terminal UI
+- **No UI exists:** Not useful for backend-only services or CLI tools without a terminal UI
 - **No code yet:** Wireframes/mockups only - use design review instead
 - **Known specific bug:** Fix it directly rather than running a full audit
 - **Performance issue:** Use profiling tools; this skill checks usability, not speed

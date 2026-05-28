@@ -13,7 +13,7 @@ Runs repeated rounds of critical analysis on your code and UI. Each round, the A
 
 **How to use it:** Type `/iterate`. The AI begins multi-round improvement immediately with no further input needed.
 
-**Why this approach:** Ad-hoc prompting ("review my code") produces shallow single-perspective feedback. Structured iteration catches 3-5x more issues through forced perspective rotation, minimum round enforcement, and mandatory verification. Without structure, teams find the same surface issues while deep problems ship to production.
+**Why this approach:** Ad-hoc prompting ("review my code") produces shallow single-perspective feedback. Structured iteration with 12 rotating personas and a 5-dimension checklist catches 3-5x more issues by eliminating perspective blind spots. Without structure, teams find the same surface issues repeatedly while deep problems ship to production.
 
 ---
 
@@ -137,11 +137,11 @@ Evaluate each item. Produce PASS or FAIL for every row. If FAIL, record the seve
 
 | # | Dimension | Pass Criteria |
 |---|-----------|--------------|
-| 1 | Happy Path | Primary task completes in under 3 clicks with no hesitation |
-| 2 | Intuition | Every element understandable without reading docs |
-| 3 | Fault Tolerance | Rapid clicks, race conditions, offline: all handled gracefully |
+| 1 | Happy Path Flow | Primary task completes in under 3 clicks with no hesitation |
+| 2 | Blind User Intuition | Every element understandable without reading docs |
+| 3 | Edge Cases & Fault Tolerance | Rapid clicks, race conditions, offline: all handled gracefully |
 | 4 | State Feedback | Visible feedback appears within 300ms of user action |
-| 5 | Hierarchy | Most important element is visually dominant on screen |
+| 5 | Information Hierarchy | Most important element is visually dominant on screen |
 
 **Measurable standards:**
 
@@ -159,6 +159,11 @@ Evaluate each item. Produce PASS or FAIL for every row. If FAIL, record the seve
 | Destructive actions need confirm+undo | Find delete/remove actions, check for confirmation dialog | Yes/No |
 
 Output per problem: `[HIGH/MEDIUM/LOW]` + file:line + description + impact on users.
+
+**Severity definitions:**
+- **HIGH:** User cannot complete their task, or loses data. Must fix before release.
+- **MEDIUM:** User completes task but with confusion or friction. Fix this sprint.
+- **LOW:** Polish opportunity with no functional impact. Add to backlog.
 
 #### 2d. Propose Fixes
 
@@ -267,7 +272,7 @@ One round, one persona, 3 findings fixed. Multiply by 10 rounds across 12 person
 - file:line - what changed and why
 
 ### Verification
-- Tests: X passed, Z added | Coverage: N% | Commit: `fix(scope): msg (Round N)`
+- Tests: X passed, Z added | Coverage: N% (or "N/A") | Commit: `fix(scope): msg (Round N)`
 ```
 
 ### Final Summary
@@ -275,7 +280,7 @@ One round, one persona, 3 findings fixed. Multiply by 10 rounds across 12 person
 ```markdown
 ## Iteration Complete
 - Rounds: N | Found: X (H:a M:b L:c) | Fixed: Y | Tests added: Z
-- Coverage: before% -> after%
+- Coverage: before% -> after% (or "N/A: no test runner")
 
 | Metric | Before | After |
 |--------|--------|-------|
