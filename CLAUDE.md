@@ -55,7 +55,7 @@ The `.claude/settings.json` file defines which operations Claude Code can perfor
 - **Bash(python3.12 -m pytest*)**: Running tests
 - **Bash(python3.12 runner.py*)**: Running the kernel
 - **Bash(ls)**, **Bash(ls *)**: Directory listing (current directory only)
-- **Bash(mkdir*)**: Creating directories
+- **Bash(mkdir workspace/*, memory/*, knowledge/*, tests/*)**: Creating directories within project scope
 - **Bash(cat kernel/*)**, **Bash(cat tests/*)**, etc.: Reading project files (scoped to project directories and known extensions: .md, .py, .yaml, .json, .toml)
 
 ### Denied Operations
@@ -63,7 +63,7 @@ The `.claude/settings.json` file defines which operations Claude Code can perfor
 - **Write(kernel/constitution.md)**: Cannot modify the kernel constitution
 - **Write(kernel/BOOT.md)**: Cannot modify the boot protocol
 - **Write(runner.py)**: Cannot modify the runner entry point
-- **Bash(rm -rf*)**: Cannot perform destructive deletions
+- **Bash(rm -rf*)**, **Bash(rm -r *)**: Cannot perform destructive deletions
 - **Bash(git push*)**: Cannot push to remote repositories
 - **Bash(curl*, wget*)**: Cannot make network requests
 
