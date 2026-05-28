@@ -177,15 +177,3 @@ TRANSITION: goal_loaded
 5. FILES_WRITTEN paths must be comma-separated if multiple
 6. ERROR lines are optional but recommended when STATUS is failure
 
----
-
-## ⚠️ CRITICAL REMINDER
-
-**Your response MUST end with these two lines (literally, not in a code block):**
-
-```
-STATUS: success
-TRANSITION: <valid_condition>
-```
-
-If you do not include these exact lines, the system will reject your output and retry. This is non-negotiable.
