@@ -14,6 +14,23 @@ import yaml
 class ContextAssembler:
     """Assembles full context prompt from kernel components."""
 
+    # Tiering rules: section_key -> list of allowed node IDs, or None for all nodes
+    TIER_RULES: dict[str, list[str] | None] = {
+        "boot": ["init"],
+        "constitution": ["init"],
+        "dao": ["reflect", "evolve"],
+        "strategy": ["plan", "reflect"],
+        "output_format": None,
+        "evolution_history": ["reflect", "evolve"],
+        "recent_reflections": ["reflect"],
+        "node_prompt": None,
+        "state_summary": None,
+        "current_task": ["code", "test", "review"],
+        "plan": ["plan", "code"],
+        "workspace_manifest": ["code", "test", "review"],
+        "decisions": ["reflect"],
+    }
+
     def __init__(self, kernel_root: Path, max_skill_content_chars: int = 8000):
         """Initialize the context assembler.
 
@@ -64,22 +81,7 @@ class ContextAssembler:
         """
         node_id = node.get("id", None)
 
-        # Tiering rules: section_key -> list of allowed node IDs, or None for all nodes
-        tier_rules = {
-            "boot": ["init"],
-            "constitution": ["init"],
-            "dao": ["reflect", "evolve"],
-            "strategy": ["plan", "reflect"],
-            "output_format": None,
-            "evolution_history": ["reflect", "evolve"],
-            "recent_reflections": ["reflect"],
-            "node_prompt": None,
-            "state_summary": None,
-            "current_task": ["code", "test", "review"],
-            "plan": ["plan", "code"],
-            "workspace_manifest": ["code", "test", "review"],
-            "decisions": ["reflect"],
-        }
+        tier_rules = self.TIER_RULES
 
         sections = []
 
@@ -293,6 +295,10 @@ class ContextAssembler:
         self._last_node_id = node_id
         self._last_successful = True
         self._last_iteration_count += 1
+
+    def mark_iteration_failure(self) -> None:
+        """Mark that the last iteration failed, resetting incremental state."""
+        self._last_successful = False
 
     def _load_progress(self) -> str:
         """Load progress information from memory/progress.yaml.

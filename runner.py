@@ -595,6 +595,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                         ),
                         file=sys.stderr,
                     )
+                    # Invalidate incremental context on failure
+                    assembler.mark_iteration_failure()
                     # Stay on same node - do not advance
                     continue
                 _active_subprocess = None
@@ -623,6 +625,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     }
                     feedback_loop.run_cycle(iteration_data)
                     state_mgr.trim_errors()
+                    # Invalidate incremental context on failure
+                    assembler.mark_iteration_failure()
                     # Apply retry strategy
                     if args.retry_strategy == "skip":
                         transitions = graph.get_available_transitions(node["id"])
@@ -679,6 +683,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                 )
                 if has_format_violation and not _last_was_lightweight:
                     retry_lightweight = True
+                # Invalidate incremental context on failure
+                assembler.mark_iteration_failure()
                 # Stay on same node - do not advance
                 continue
 
@@ -726,11 +732,10 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                         f"No TRANSITION line in AI output on node {node['id']}, "
                         f"fell back to: {next_node_id}"
                     )
-                state_mgr.set_current_node(next_node_id)
-
                 # Medium complexity: skip reflect/evolve
                 if complexity == "medium" and next_node_id in ("reflect", "evolve"):
-                    state_mgr.set_current_node("plan")
+                    next_node_id = "plan"
+                state_mgr.set_current_node(next_node_id)
 
                 # Mark iteration success for incremental context
                 assembler.mark_iteration_success(node["id"])
@@ -826,11 +831,11 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             transitions = graph.get_available_transitions(node["id"])
             if transitions:
                 next_node_id = transitions[0]["to"]
-                state_mgr.set_current_node(next_node_id)
 
                 # Medium complexity: skip reflect/evolve in scaffolding mode
                 if complexity == "medium" and next_node_id in ("reflect", "evolve"):
-                    state_mgr.set_current_node("plan")
+                    next_node_id = "plan"
+                state_mgr.set_current_node(next_node_id)
 
                 if args.dry_run:
                     print(f"  Next node: {next_node_id}")

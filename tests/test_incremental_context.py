@@ -259,3 +259,108 @@ class TestMarkIterationSuccess:
         assembler.mark_iteration_success("test")
         assert assembler._last_node_id == "test"
         assert assembler._last_successful is True
+
+
+class TestMarkIterationFailure:
+    """Tests for mark_iteration_failure method."""
+
+    def test_failure_resets_successful_flag(self) -> None:
+        """Test mark_iteration_failure resets _last_successful to False."""
+        assembler = ContextAssembler(Path("/tmp/fake"))
+        assembler.mark_iteration_success("code")
+        assert assembler._last_successful is True
+        assembler.mark_iteration_failure()
+        assert assembler._last_successful is False
+
+    def test_failure_preserves_node_id(self) -> None:
+        """Test mark_iteration_failure does not change _last_node_id."""
+        assembler = ContextAssembler(Path("/tmp/fake"))
+        assembler.mark_iteration_success("code")
+        assembler.mark_iteration_failure()
+        assert assembler._last_node_id == "code"
+
+    def test_failure_after_success_forces_full_context(
+        self, assembler_env: tuple
+    ) -> None:
+        """Test that after mark_iteration_failure, assemble_incremental returns empty."""
+        assembler, graph, knowledge = assembler_env
+        state = {
+            "goal": "test",
+            "current_node": "code",
+            "iteration_count": 2,
+            "max_iterations": 30,
+            "status": "running",
+            "errors": [],
+            "context": {},
+        }
+        node = {"id": "code"}
+
+        # First call to set last_node_id
+        assembler.assemble_incremental(state, node, graph, knowledge)
+        # Mark success
+        assembler.mark_iteration_success("code")
+        # Verify incremental works
+        result = assembler.assemble_incremental(state, node, graph, knowledge)
+        assert result != ""
+
+        # Now mark failure
+        assembler.mark_iteration_failure()
+        # Next assemble_incremental should return empty (full context needed)
+        result = assembler.assemble_incremental(state, node, graph, knowledge)
+        assert result == ""
+
+    @pytest.fixture
+    def assembler_env(self, tmp_path: Path) -> tuple[ContextAssembler, MagicMock, MagicMock]:
+        """Set up a ContextAssembler with mock graph and knowledge."""
+        kernel_dir = tmp_path
+        (kernel_dir / "kernel").mkdir()
+        (kernel_dir / "kernel" / "prompts").mkdir()
+        (kernel_dir / "kernel" / "prompts" / "coder.md").write_text("Code node prompt")
+        (kernel_dir / "kernel" / "contracts").mkdir()
+        (kernel_dir / "kernel" / "contracts" / "output_format.md").write_text(
+            "Output format: STATUS and TRANSITION required."
+        )
+        (kernel_dir / "kernel" / "BOOT.md").write_text(
+            "# Boot Sequence\n\n" + "Boot content paragraph. " * 50
+        )
+        (kernel_dir / "kernel" / "philosophy").mkdir()
+        (kernel_dir / "kernel" / "philosophy" / "dao.md").write_text("# Dao\nPhilosophy.")
+        (kernel_dir / "kernel" / "philosophy" / "strategy.md").write_text("# Strategy")
+
+        memory_dir = kernel_dir / "memory"
+        memory_dir.mkdir()
+        (memory_dir / "decisions.jsonl").touch()
+        (memory_dir / "reflections.jsonl").touch()
+        (memory_dir / "current_goal.md").touch()
+        (memory_dir / "plan.md").touch()
+        with open(memory_dir / "progress.yaml", "w") as f:
+            yaml.safe_dump(
+                {"iteration": 1, "tasks_total": 5, "tasks_done": 2, "status": "running"},
+                f,
+            )
+        tasks_data = {
+            "tasks": [
+                {
+                    "id": "T-001",
+                    "title": "Build login",
+                    "status": "in_progress",
+                    "description": "Build login page",
+                    "complexity": "medium",
+                },
+            ]
+        }
+        with open(memory_dir / "tasks.yaml", "w") as f:
+            yaml.safe_dump(tasks_data, f)
+
+        (kernel_dir / "kernel" / "evolution").mkdir()
+        (kernel_dir / "kernel" / "evolution" / "history.jsonl").touch()
+
+        assembler = ContextAssembler(kernel_dir)
+
+        graph_executor = MagicMock()
+        graph_executor.get_prompt_for_node.return_value = "prompts/coder.md"
+
+        knowledge_store = MagicMock()
+        knowledge_store.list_skills.return_value = []
+
+        return assembler, graph_executor, knowledge_store
