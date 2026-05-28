@@ -8,7 +8,7 @@ nodes:
     transitions:
       - to: plan
         condition: "goal_loaded"
-    max_retries: 1
+    max_retries: 5
 
   - id: plan
     prompt_file: prompts/planner.md

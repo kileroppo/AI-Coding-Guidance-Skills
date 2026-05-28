@@ -60,3 +60,12 @@ Update `kernel/state.yaml` with:
 - `goal: <the loaded goal>`
 - `last_updated: <current timestamp>`
 - `context.phase: "initialized"`
+
+---
+
+## ⚠️ MANDATORY OUTPUT
+
+You MUST end your response with these exact lines (outside any code block):
+
+STATUS: success
+TRANSITION: goal_loaded
