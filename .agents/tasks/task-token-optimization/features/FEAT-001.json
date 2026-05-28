@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Implement P0 (Lightweight Retry) and P1 (Context Tiering) - the two most impactful token savings that modify existing files runner.py and context_assembler.py",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "P0 - Lightweight Retry in runner.py: In the Mode 3 loop, after contract_result.valid is False and the violations contain 'Missing required TRANSITION line' or 'Missing required STATUS line', set a flag retry_lightweight = True on the state or a local variable.",
     "P0 - When the next iteration begins in Mode 3, check if retry_lightweight is True. If so, build a minimal prompt string: 'Your previous output was rejected because it is missing required format lines.\\nPlease output ONLY these two lines now:\\n\\nSTATUS: success\\nTRANSITION: <condition>\\n\\nCurrent node: {node_id}\\nValid TRANSITION values: {valid_transitions}'. Use this instead of calling assembler.assemble(). Clear retry_lightweight after use.",
@@ -28,5 +28,5 @@
     "python3.12 -m pytest tests/ --cov --cov-fail-under=90 -q"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Pre-existing test failure in tests/test_knowledge.py::TestSkillPathResolution::test_skill_paths_resolve (expects 28 skills but finds 29) - unrelated to this feature. All other 1093 tests pass. Coverage at 98.35%. The tiering changes required updating 3 existing test files (test_context_assembler_enhanced.py, test_feedback_loop.py, test_kernel.py) to use appropriate node IDs that include the sections being tested."
 }
